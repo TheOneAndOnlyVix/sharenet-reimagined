@@ -50,117 +50,39 @@ const storage = getStorage(app);
 const SITE_ADMIN_EMAIL = "ogheneovieumebese@gmail.com";
 
 // =============================================================================
-//  Inlined Content Moderation (no external module import needed)
+//  Content Moderation — calls the ShareNet Worker's /moderate endpoint.
+//  The Worker holds the OpenAI key server-side (env.OPENAI_API_KEY) and
+//  proxies to OpenAI's free /v1/moderations API. No API keys are ever
+//  exposed to the browser. Fails open (allows the post) on any network
+//  or server error so a Worker outage never blocks people from posting.
 // =============================================================================
-const BLOCKED_PATTERNS = [
-  /\bn[i1!|]+g+[e3]r/i,
-  /\bn[i1!|]+gg[a@]/i,
-  /\bk[i1]+k[e3]/i,
-  /\bsp[i1]+c/i,
-  /\bch[i1]+nk/i,
-  /\bgook/i,
-  /\bwetback/i,
-  /\bcr[a@]cker/i,
-  /\btr[a@]nny/i,
-  /\bf[a@4]gg[o0]t/i,
-  /\bd[y1]k[e3]/i,
-  /\bretard/i,
-  /\bcr[i1]pple/i,
-  /\bsp[a@]z/i,
-  /\bf+[u\*]+c+k/i,
-  /\bsh[i1!]+t/i,
-  /\ba+[s\$]+h[o0]l[e3]/i,
-  /\bb[i1!]+tch/i,
-  /\bc[u\*]nt/i,
-  /\bd[i1!]+ck/i,
-  /\bc[o0]ck/i,
-  /\bp[u\*]+ss[y1]/i,
-  /\bwh[o0]r[e3]/i,
-  /\bsl[u\*]t/i,
-  /\bb[a@]st[a@]rd/i,
-  /\bd[a@]mn/i,
-  /\bh[e3]ll/i,
-  /\bcr[a@]p/i,
-  /\bkill\s+(your?self|him|her|them|you|me)\b/i,
-  /\bi('ll|will)\s+(kill|murder|stab|shoot|hurt)\b/i,
-  /\bkys\b/i,
-  /\bgys\b/i,
-];
+const MODERATION_ENDPOINT =
+  "https://sharenet-assistant.ogheneovieumebese.workers.dev/moderate";
 
-function _localCheck(text) {
-  const n = text
-    .replace(/[@]/g, "a")
-    .replace(/[3]/g, "e")
-    .replace(/[1!|]/g, "i")
-    .replace(/[0]/g, "o")
-    .replace(/[\$]/g, "s")
-    .replace(/[+]/g, "t");
-  for (const p of BLOCKED_PATTERNS) {
-    if (p.test(n) || p.test(text)) {
-      return {
-        blocked: true,
-        reason:
-          "Your message contains language that isn't allowed on ShareNet. Please keep it respectful.",
-      };
-    }
-  }
-  return { blocked: false };
-}
-
-const _AI_MOD_PROMPT = `You are a strict content moderation assistant for a school community platform called ShareNet.
-Analyse the user message and decide whether it violates any of these rules:
-- Hate speech or slurs targeting any group
-- Threats of violence or self-harm
-- Severe harassment or bullying directed at an individual
-- Explicit sexual content
-- Encouragement of illegal activity
-Reply with EXACTLY ONE of:
-  ALLOWED
-  BLOCKED: <one-sentence plain-English reason>
-Do not add any other text. If in doubt, lean toward ALLOWED for normal teenage conversation.`;
-
-async function _aiCheck(text) {
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 60,
-        system: _AI_MOD_PROMPT,
-        messages: [{ role: "user", content: text }],
-      }),
-    });
-    if (!res.ok) return { blocked: false };
-    const data = await res.json();
-    const reply = (data?.content?.[0]?.text || "").trim();
-    if (reply.startsWith("BLOCKED:")) {
-      return {
-        blocked: true,
-        reason:
-          reply.replace(/^BLOCKED:\s*/i, "").trim() ||
-          "This message was flagged as harmful content.",
-      };
-    }
-    return { blocked: false };
-  } catch {
-    return { blocked: false };
-  }
-}
-
-async function checkContent(text, { aiEnabled = true } = {}) {
+async function checkContent(text) {
   if (!text || !text.trim()) return { allowed: true };
-  const local = _localCheck(text);
-  if (local.blocked) return { allowed: false, reason: local.reason };
-  if (aiEnabled && text.trim().split(/\s+/).length >= 6) {
-    const ai = await _aiCheck(text);
-    if (ai.blocked) return { allowed: false, reason: ai.reason };
+
+  try {
+    const res = await fetch(MODERATION_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+
+    if (!res.ok) return { allowed: true }; // fail open
+
+    const data = await res.json();
+    if (data && data.allowed === false) {
+      return {
+        allowed: false,
+        reason: data.reason || "This message was flagged as harmful content.",
+      };
+    }
+    return { allowed: true };
+  } catch (err) {
+    console.error("Moderation request failed:", err);
+    return { allowed: true }; // fail open — never block users on a network error
   }
-  return { allowed: true };
 }
 // =============================================================================
 
