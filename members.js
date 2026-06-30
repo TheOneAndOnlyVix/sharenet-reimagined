@@ -754,10 +754,16 @@ function renderMembersDirectory() {
           ? 'style="color: #bb86fc; background: rgba(187, 134, 252, 0.1); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase;"'
           : 'style="color: #94a3b8; font-size: 13px;"';
 
-      // Avatar: photo if available, otherwise initial letter
+      // Avatar: photo if available, otherwise initial letter — wrapped in a
+      // link so clicking navigates to that member's profile page.
       const avatarInner = photoUrl
         ? `<img src="${photoUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
         : initial;
+
+      const avatarMarkup = `
+        <a href="profile.html?uid=${userDocId}" class="member-card-avatar-link" title="View profile">
+          <div class="member-card-avatar">${avatarInner}</div>
+        </a>`;
 
       // Only show display name row if the user has set one (and it differs from username)
       const displayNameRow =
@@ -791,7 +797,7 @@ function renderMembersDirectory() {
 
       const cardHTML = `
         <div class="member-card">
-          <div class="member-card-avatar">${avatarInner}</div>
+          ${avatarMarkup}
           <h3 class="member-name">@${username}</h3>
           ${displayNameRow}
           ${badgeRowHTML ? `<div class="member-card-badges">${badgeRowHTML}</div>` : ""}
