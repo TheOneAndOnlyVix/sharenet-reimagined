@@ -1110,7 +1110,7 @@ function filterAndRenderPosts(filterQuery) {
               <div class="post-author-avatar">${avatarInner}</div>
               <div class="post-meta-details">
                 <span style="display:flex; align-items:center;">
-                  <span class="author-name">${displayName}</span>
+                  <a href="profile.html?uid=${post.authorId || ""}" class="author-name author-name-link">${displayName}</a>
                   <span class="user-badge-row-slot" data-badge-author-uid="${
                     post.authorId || ""
                   }" data-badge-id-prefix="post-${post.id}">${renderAuthorBadgeRow(
@@ -1418,7 +1418,7 @@ function bindRealTimeCommentsStream(postId) {
         <div class="comment-avatar">${commentAvatar}</div>
         <div style="display:flex;flex-direction:column;flex:1;">
           <span style="display:flex; align-items:center;">
-            <span class="comment-author-name">${displayAuthor}</span>
+            <a href="profile.html?uid=${comm.authorUid || ""}" class="comment-author-name comment-author-name-link">${displayAuthor}</a>
             <span class="user-badge-row-slot" data-badge-author-uid="${
               comm.authorUid || ""
             }" data-badge-id-prefix="comment-${cId}">${renderAuthorBadgeRow(
