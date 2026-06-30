@@ -19,6 +19,7 @@
      16. Poll Widgets
      17. Footer
      18. Scrollbar
+     19. Badges System
    ========================================================================== */
 
 /* ==========================================================================
@@ -3145,4 +3146,312 @@ html.theme-light .comment-author-label {
 }
 html.theme-light .comment-text-content {
   color: #0f172a; /* Slate text */
+}
+
+/* ==========================================================================
+   19. BADGES SYSTEM
+   ========================================================================== */
+
+/* ── Badge pill — the core reusable unit, shown on profile cards,
+   post author names, and comment author names. Background/text colors
+   are set inline per-badge via JS since they're fully user-defined. ── */
+.user-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px 2px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
+  white-space: nowrap;
+  vertical-align: middle;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.user-badge-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.user-badge-icon .material-symbols-outlined {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.user-badge-icon img {
+  width: 13px;
+  height: 13px;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+/* Wrapper placed next to a name (post author, comment author, member card) */
+.user-badge-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* "+N" overflow trigger button, shown when a user has more than one badge */
+.badge-overflow-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--bg-card-hover);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.badge-overflow-trigger:hover {
+  background: var(--accent-purple);
+  color: #fff;
+  border-color: var(--accent-purple);
+}
+
+/* Badge row sitting under the member name on a profile card */
+.member-card-badges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+/* ── Badge Manager modal (admin) — list of existing badges ── */
+.badge-manager-box {
+  max-width: 480px;
+  width: 92%;
+}
+
+.badge-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.badge-manager-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card-hover);
+}
+
+.badge-manager-row-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.badge-manager-row-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.badge-manager-delete-btn {
+  background: none;
+  border: none;
+  color: var(--accent-danger);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.badge-manager-delete-btn:hover {
+  background: rgba(248, 81, 73, 0.15);
+}
+
+/* ── Create Badge form ── */
+.badge-icon-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.badge-icon-tab {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card-hover);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.badge-icon-tab.active {
+  background: var(--accent-purple);
+  border-color: var(--accent-purple);
+  color: #fff;
+}
+
+.badge-icon-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--bg-card-hover);
+}
+
+.badge-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.badge-icon-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.badge-icon-option .material-symbols-outlined {
+  font-size: 20px;
+}
+
+.badge-icon-option:hover {
+  border-color: var(--accent-purple);
+}
+
+.badge-icon-option.selected {
+  background: var(--accent-purple);
+  border-color: var(--accent-purple);
+  color: #fff;
+}
+
+.badge-icon-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 12px;
+  border: 2px dashed var(--border-color);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+
+.badge-icon-dropzone:hover,
+.badge-icon-dropzone.drag-over {
+  border-color: var(--accent-purple);
+  color: var(--accent-purple);
+}
+
+.badge-icon-dropzone p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* Color inputs — keep native swatch but match card sizing */
+input[type="color"]#badgeTextColorInput,
+input[type="color"]#badgeBgColorInput {
+  width: 100%;
+  height: 42px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card-hover);
+  cursor: pointer;
+}
+
+/* ── "+N more" overflow popup list ── */
+.badge-overflow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.badge-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card-hover);
+}
+
+/* Clickable variant used in the Award Badge picker */
+.badge-overflow-item.badge-pickable {
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.badge-overflow-item.badge-pickable:hover {
+  border-color: var(--accent-purple);
+  transform: translateY(-1px);
+}
+
+/* ── Light mode overrides ── */
+html.theme-light .badge-manager-row,
+html.theme-light .badge-icon-panel,
+html.theme-light .badge-icon-option,
+html.theme-light .badge-overflow-item {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+
+html.theme-light .badge-icon-tab {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+  color: var(--text-muted);
+}
+
+html.theme-light .badge-icon-tab.active {
+  background: var(--accent-purple);
+  color: #fff;
+}
+
+html.theme-light .badge-icon-dropzone {
+  border-color: var(--border-color);
+  color: var(--text-muted);
+}
+
+html.theme-light .badge-overflow-trigger {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+  color: var(--text-muted);
+}
+
+html.theme-light input[type="color"]#badgeTextColorInput,
+html.theme-light input[type="color"]#badgeBgColorInput {
+  background: var(--bg-card);
+  border-color: var(--border-color);
 }
