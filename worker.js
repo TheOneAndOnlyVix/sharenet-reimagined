@@ -115,9 +115,12 @@ async function handleChatbot(request, env) {
 async function handleModeration(request, env) {
   try {
     const body = await request.json();
-    const text = (body.text || "").trim();
+    let text = (body.text || "").trim();
 
     if (!text) return jsonResponse({ allowed: true });
+
+    // Guard against oversized payloads (OpenAI moderation caps input length)
+    if (text.length > 5000) text = text.slice(0, 5000);
 
     const response = await fetch("https://api.openai.com/v1/moderations", {
       method: "POST",
@@ -143,20 +146,32 @@ async function handleModeration(request, env) {
       // Find which categories were triggered to give a useful reason
       const categories = result.categories;
       const triggered = [];
-      if (categories.hate || categories["hate/threatening"])
-        triggered.push("hate speech");
-      if (
+      const isSelfHarm =
         categories["self-harm"] ||
         categories["self-harm/intent"] ||
-        categories["self-harm/instructions"]
-      )
-        triggered.push("self-harm content");
+        categories["self-harm/instructions"];
+
+      if (categories.hate || categories["hate/threatening"])
+        triggered.push("hate speech");
+      if (isSelfHarm) triggered.push("self-harm content");
       if (categories.harassment || categories["harassment/threatening"])
         triggered.push("harassment or threats");
       if (categories.sexual || categories["sexual/minors"])
         triggered.push("sexual content");
       if (categories.violence || categories["violence/graphic"])
         triggered.push("violent content");
+
+      // Self-harm gets a caring, resource-forward message instead of a
+      // generic "not allowed" block — this is the one category where the
+      // response itself matters, not just the moderation outcome.
+      if (isSelfHarm) {
+        return jsonResponse({
+          allowed: false,
+          isSelfHarm: true,
+          reason:
+            "It looks like this message might be about hurting yourself. You're not alone, and support is available. Please reach out to a trusted adult, school counselor, or a crisis line — in the US you can call or text 988 (Suicide & Crisis Lifeline) anytime.",
+        });
+      }
 
       const reason =
         triggered.length > 0
