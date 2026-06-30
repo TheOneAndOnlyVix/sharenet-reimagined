@@ -75,6 +75,7 @@ function injectSharedHtml() {
               </p>
             </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+              <button id="sharedViewProfileBtn" class="secondary-btn-style" style="margin:0">View My Profile</button>
               <button id="sharedSaveProfileBtn" class="submit-btn" style="margin:0">Save Changes</button>
             </div>
           </div>
@@ -180,6 +181,15 @@ function bindProfileModal() {
     modal.addEventListener("click", (e) => {
       if (e.target === modal) modal.style.display = "none";
     });
+
+  const viewProfileBtn = document.getElementById("sharedViewProfileBtn");
+  if (viewProfileBtn) {
+    viewProfileBtn.addEventListener("click", () => {
+      if (auth.currentUser) {
+        window.location.href = `profile.html?uid=${auth.currentUser.uid}`;
+      }
+    });
+  }
 
   if (navAvatar) {
     navAvatar.addEventListener("click", () => {
