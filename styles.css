@@ -3455,3 +3455,459 @@ html.theme-light input[type="color"]#badgeBgColorInput {
   background: var(--bg-card);
   border-color: var(--border-color);
 }
+
+/* ==========================================================================
+   20. PROFILE PAGE
+   ========================================================================== */
+
+/* ── Page container ── */
+.profile-page-container {
+  max-width: 860px;
+  margin: 36px auto;
+  padding: 0 20px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.profile-loading,
+.profile-not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Header card ── */
+.profile-header-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 32px 28px;
+}
+
+.profile-header-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+}
+
+.profile-page-avatar {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: var(--bg-body);
+  border: 3px solid var(--accent-purple);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--accent-purple);
+  overflow: hidden;
+}
+
+.profile-page-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.profile-header-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.profile-display-name {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.profile-role-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.profile-role-admin {
+  background: rgba(187, 134, 252, 0.15);
+  color: var(--accent-purple);
+  border: 1px solid var(--accent-purple);
+}
+
+.profile-role-member {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+
+.profile-username {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.profile-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.profile-follow-stats {
+  display: flex;
+  gap: 20px;
+  margin-top: 4px;
+}
+
+.profile-stat-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0;
+  color: var(--text-main);
+  transition: color 0.15s;
+}
+
+.profile-stat-btn:hover .profile-stat-num {
+  color: var(--accent-purple);
+}
+
+.profile-stat-num {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.profile-stat-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.profile-action-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.profile-follow-btn {
+  padding: 8px 22px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  background: var(--accent-purple);
+  color: #fff;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.profile-follow-btn:hover {
+  background: #9333ea;
+  transform: translateY(-1px);
+}
+
+.profile-follow-btn--following {
+  background: var(--bg-card-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+
+.profile-follow-btn--following:hover {
+  background: rgba(248, 81, 73, 0.1);
+  color: var(--accent-danger);
+  border-color: var(--accent-danger);
+}
+
+/* ── Join date strip ── */
+.profile-join-strip {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.profile-join-date {
+  color: var(--text-muted);
+}
+
+/* ── Body grid: About + Groups I Own ── */
+.profile-body-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .profile-body-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-header-inner {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .profile-follow-stats,
+  .profile-action-row,
+  .profile-name-row {
+    justify-content: center;
+  }
+}
+
+.profile-about-section,
+.profile-groups-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 22px 20px;
+}
+
+.profile-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.profile-section-header h3,
+.profile-about-section h3,
+.profile-groups-section h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0 0 12px;
+}
+
+.profile-section-header h3 {
+  margin: 0;
+}
+
+.profile-edit-inline-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.profile-edit-inline-btn:hover {
+  color: var(--accent-purple);
+  background: rgba(187, 134, 252, 0.1);
+}
+
+.profile-about-content {
+  min-height: 48px;
+}
+
+.profile-about-text {
+  font-size: 14px;
+  color: var(--text-main);
+  line-height: 1.65;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.profile-about-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+  font-style: italic;
+}
+
+.profile-about-textarea {
+  width: 100%;
+  min-height: 100px;
+  background: var(--bg-body);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-size: 14px;
+  padding: 10px 12px;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.profile-about-textarea:focus {
+  outline: none;
+  border-color: var(--accent-purple);
+}
+
+.profile-groups-list {
+  font-size: 13px;
+  color: var(--text-main);
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ── Badges section (full grid at page bottom) ── */
+.profile-badges-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 22px 20px;
+}
+
+.profile-badges-section h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0 0 16px;
+}
+
+.profile-badges-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.profile-badge-card {
+  display: flex;
+  align-items: center;
+}
+
+/* ── Follow list popup ── */
+.follow-list-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.follow-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card-hover);
+  text-decoration: none;
+  transition: border-color 0.15s;
+  color: var(--text-main);
+}
+
+.follow-list-item:hover {
+  border-color: var(--accent-purple);
+}
+
+.follow-list-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--bg-body);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-purple);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.follow-list-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.follow-list-username {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Member card avatar becomes a clickable link ── */
+.member-card-avatar-link {
+  display: block;
+  cursor: pointer;
+  border-radius: 50%;
+  text-decoration: none;
+}
+
+/* ── Post/comment author names as clickable links ── */
+.author-name-link,
+.comment-author-name-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.author-name-link:hover,
+.comment-author-name-link:hover {
+  color: var(--accent-purple);
+  text-decoration: underline;
+}
+
+/* ── Light mode overrides ── */
+html.theme-light .profile-header-card,
+html.theme-light .profile-join-strip,
+html.theme-light .profile-about-section,
+html.theme-light .profile-groups-section,
+html.theme-light .profile-badges-section {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+
+html.theme-light .profile-display-name,
+html.theme-light .profile-stat-num,
+html.theme-light .profile-about-text,
+html.theme-light .profile-groups-list {
+  color: var(--text-main);
+}
+
+html.theme-light .profile-about-textarea {
+  background: #f8fafc;
+  border-color: var(--border-color);
+  color: var(--text-main);
+}
+
+html.theme-light .follow-list-item {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+
+html.theme-light .profile-role-admin {
+  background: rgba(168, 85, 247, 0.1);
+}
+
+html.theme-light .profile-role-member {
+  background: rgba(148, 163, 184, 0.08);
+}
