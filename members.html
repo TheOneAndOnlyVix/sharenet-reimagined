@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Members | Sharenet Reimagined</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -131,6 +135,15 @@
               Demote to Member
             </button>
           </div>
+
+          <div class="admin-controls" style="margin-top: 10px">
+            <button id="awardBadgeBtn" class="action-btn">
+              Award Badge to Selected User
+            </button>
+            <button id="manageBadgesBtn" class="secondary-btn-style">
+              🏅 Manage Badges
+            </button>
+          </div>
         </div>
 
         <div id="membersGrid" class="members-grid">
@@ -138,6 +151,123 @@
         </div>
       </section>
     </main>
+
+    <!-- ================================================================
+         BADGE MANAGEMENT MODAL (admin only) — list + create + delete
+         ================================================================ -->
+    <div id="badgeManagerModal" class="modal-overlay" style="display: none">
+      <div class="modal-box badge-manager-box">
+        <span id="closeBadgeManagerModal" class="close-btn">&times;</span>
+        <h2>Manage Badges</h2>
+        <p class="subtitle" style="margin-bottom: 18px">
+          Create custom badges and award them to members.
+        </p>
+
+        <button id="openCreateBadgeBtn" class="action-btn" style="margin-bottom: 18px">
+          + Create New Badge
+        </button>
+
+        <div id="badgeManagerList" class="badge-manager-list">
+          <p class="loading-text">Loading badges...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         CREATE BADGE MODAL (admin only)
+         ================================================================ -->
+    <div id="createBadgeModal" class="modal-overlay" style="display: none">
+      <div class="modal-box">
+        <span id="closeCreateBadgeModal" class="close-btn">&times;</span>
+        <h2>Create Badge</h2>
+
+        <div class="input-group">
+          <label for="badgeTitleInput">Badge Title</label>
+          <input
+            type="text"
+            id="badgeTitleInput"
+            placeholder="e.g. Ultimate Socialite"
+            maxlength="40"
+          />
+        </div>
+
+        <div class="input-group">
+          <label>Icon</label>
+          <div class="badge-icon-tabs">
+            <button type="button" class="badge-icon-tab active" data-tab="library">
+              Icon Library
+            </button>
+            <button type="button" class="badge-icon-tab" data-tab="upload">
+              Upload Image
+            </button>
+          </div>
+
+          <div id="badgeIconLibraryPanel" class="badge-icon-panel">
+            <div id="badgeIconGrid" class="badge-icon-grid"></div>
+          </div>
+
+          <div id="badgeIconUploadPanel" class="badge-icon-panel" style="display: none">
+            <div id="badgeIconDropzone" class="badge-icon-dropzone">
+              <span class="material-symbols-outlined" style="font-size: 28px">upload</span>
+              <p>Drag & drop an image, or click to browse</p>
+              <p style="font-size: 12px; color: var(--text-muted)">PNG/JPG, under 100KB</p>
+              <input type="file" id="badgeIconFileInput" accept="image/*" hidden />
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 16px">
+          <div class="input-group" style="flex: 1">
+            <label for="badgeTextColorInput">Text Color</label>
+            <input type="color" id="badgeTextColorInput" value="#ffffff" />
+          </div>
+          <div class="input-group" style="flex: 1">
+            <label for="badgeBgColorInput">Background Color</label>
+            <input type="color" id="badgeBgColorInput" value="#a855f7" />
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Preview</label>
+          <div id="badgeLivePreviewWrap" style="padding: 10px 0">
+            <span id="badgeLivePreview" class="user-badge-pill">
+              <span id="badgeLivePreviewIcon" class="user-badge-icon"></span>
+              <span id="badgeLivePreviewText">Badge Title</span>
+            </span>
+          </div>
+        </div>
+
+        <button id="submitCreateBadgeBtn" class="submit-btn">
+          Create Badge
+        </button>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         AWARD BADGE MODAL (admin only) — click a badge to award it to
+         whichever user is currently selected in the admin dropdown
+         ================================================================ -->
+    <div id="awardBadgeModal" class="modal-overlay" style="display: none">
+      <div class="modal-box">
+        <span id="closeAwardBadgeModal" class="close-btn">&times;</span>
+        <h2>Award a Badge</h2>
+        <p class="subtitle" id="awardBadgeTargetLabel" style="margin-bottom: 18px">
+          Awarding to: —
+        </p>
+        <div id="awardBadgePickerList" class="badge-overflow-list"></div>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         "+N MORE BADGES" POPUP — shown when clicking the + on a profile
+         ================================================================ -->
+    <div id="badgeOverflowModal" class="modal-overlay" style="display: none">
+      <div class="modal-box">
+        <span id="closeBadgeOverflowModal" class="close-btn">&times;</span>
+        <h2>All Badges</h2>
+        <div id="badgeOverflowList" class="badge-overflow-list"></div>
+      </div>
+    </div>
 
     <div id="authModal" class="modal-overlay">
       <div class="modal-box">
