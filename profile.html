@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Profile | ShareNet</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- ================================================================
+         TOP NAVIGATION BAR
+         ================================================================ -->
+    <nav class="navbar">
+      <div class="logo">ShareNet</div>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="groups.html">Groups</a></li>
+        <li>
+          <a href="notifications.html" id="navNotificationsLink">Notifications</a>
+        </li>
+        <li><a href="messenger.html">Messenger</a></li>
+        <li><a href="events.html">Events</a></li>
+        <li><a href="members.html" class="active">Members</a></li>
+        <li><a href="blog.html">Blog</a></li>
+        <li><a href="calendar.html">Calendar</a></li>
+      </ul>
+      <div class="nav-right-container" style="display:flex;align-items:center;gap:18px">
+        <div id="notificationBellBtn" class="bell-wrapper" style="position:relative;cursor:pointer;display:flex;align-items:center;">
+          <svg class="bell-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#bb86fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+          <span id="notificationBadge" class="badge" style="display:none;position:absolute;top:-6px;right:-8px;background-color:#cf6679;color:#121212;font-size:11px;font-weight:bold;padding:2px 6px;border-radius:10px;min-width:18px;text-align:center;">0</span>
+        </div>
+        <div id="navProfileAvatar" class="nav-profile-avatar" style="width:36px;height:36px;background-color:#bb86fc;color:#121212;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;cursor:pointer;user-select:none;">?</div>
+        <div class="login-btn">
+          <button id="authNavBtn">Log In</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ================================================================
+         PROFILE PAGE MAIN CONTENT
+         ================================================================ -->
+    <main class="profile-page-container">
+
+      <!-- ── Loading / error state ── -->
+      <div id="profileLoadingState" class="profile-loading">
+        <p class="loading-text">Loading profile...</p>
+      </div>
+
+      <!-- ── Profile not found ── -->
+      <div id="profileNotFound" class="profile-not-found" style="display:none">
+        <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-muted)">person_off</span>
+        <h2>Profile Not Found</h2>
+        <p>This user doesn't exist or their profile has been removed.</p>
+        <a href="members.html" class="submit-btn" style="display:inline-block;margin-top:12px;text-decoration:none;">Back to Members</a>
+      </div>
+
+      <!-- ── Main profile content (populated by JS) ── -->
+      <div id="profileContent" style="display:none">
+
+        <!-- HEADER CARD: avatar, name, role, follow stats, follow button -->
+        <div class="profile-header-card">
+          <div class="profile-header-inner">
+            <div id="profileAvatar" class="profile-page-avatar">?</div>
+            <div class="profile-header-info">
+              <div class="profile-name-row">
+                <h1 id="profileDisplayName" class="profile-display-name">—</h1>
+                <span id="profileRoleBadge" class="profile-role-badge"></span>
+              </div>
+              <p id="profileUsername" class="profile-username">@—</p>
+
+              <!-- Badges row (primary + overflow) -->
+              <div id="profileBadgeRow" class="profile-badge-row"></div>
+
+              <!-- Follow stats -->
+              <div class="profile-follow-stats">
+                <button class="profile-stat-btn" id="followersBtn">
+                  <span id="followersCount" class="profile-stat-num">0</span>
+                  <span class="profile-stat-label">Followers</span>
+                </button>
+                <button class="profile-stat-btn" id="followingBtn">
+                  <span id="followingCount" class="profile-stat-num">0</span>
+                  <span class="profile-stat-label">Following</span>
+                </button>
+              </div>
+
+              <!-- Action row: follow button + edit button (own profile only) -->
+              <div class="profile-action-row">
+                <button id="followBtn" class="profile-follow-btn" style="display:none">Follow</button>
+                <button id="editProfileBtn" class="secondary-btn-style" style="display:none">
+                  <span class="material-symbols-outlined" style="font-size:15px;vertical-align:middle;">edit</span>
+                  Edit Profile
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- JOIN DATE STRIP -->
+        <div class="profile-join-strip">
+          <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;margin-right:4px;color:var(--text-muted)">calendar_today</span>
+          <span id="profileJoinDate" class="profile-join-date">Joined —</span>
+        </div>
+
+        <!-- BODY: About + Groups I Own (side by side) -->
+        <div class="profile-body-grid">
+          <div class="profile-about-section">
+            <div class="profile-section-header">
+              <h3>About</h3>
+              <button id="editAboutBtn" class="profile-edit-inline-btn" style="display:none" title="Edit about">
+                <span class="material-symbols-outlined" style="font-size:16px;">edit</span>
+              </button>
+            </div>
+            <div id="profileAboutContent" class="profile-about-content">
+              <p class="profile-about-empty">Nothing here yet.</p>
+            </div>
+            <!-- Inline about editor (shown when Edit is clicked) -->
+            <div id="profileAboutEditor" style="display:none">
+              <textarea id="profileAboutTextarea" class="profile-about-textarea" placeholder="Tell people about yourself..." maxlength="500"></textarea>
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <button id="saveAboutBtn" class="submit-btn" style="padding:8px 18px;font-size:13px;">Save</button>
+                <button id="cancelAboutBtn" class="secondary-btn-style" style="padding:8px 18px;font-size:13px;">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="profile-groups-section">
+            <h3>Groups I Own</h3>
+            <div id="profileGroupsOwned" class="profile-groups-owned">
+              <p class="profile-about-empty">No groups owned.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- BADGES SECTION -->
+        <div class="profile-badges-section">
+          <h3>Badges</h3>
+          <div id="profileBadgesFull" class="profile-badges-grid">
+            <p class="profile-about-empty">No badges yet.</p>
+          </div>
+        </div>
+
+      </div><!-- /profileContent -->
+    </main>
+
+    <!-- ================================================================
+         FOLLOWERS / FOLLOWING POPUP MODAL
+         ================================================================ -->
+    <div id="followListModal" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <span id="closeFollowListModal" class="close-btn">&times;</span>
+        <h2 id="followListTitle">Followers</h2>
+        <div id="followListContent" class="follow-list-content">
+          <p class="loading-text">Loading...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         AUTH MODAL
+         ================================================================ -->
+    <div id="authModal" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <span id="closeModal" class="close-btn">&times;</span>
+        <h2 id="modalTitle">Log In</h2>
+        <form id="authForm">
+          <div class="input-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" required placeholder="Enter school email" />
+          </div>
+          <div class="input-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" required placeholder="Enter password" />
+          </div>
+          <button type="submit" id="authSubmitBtn" class="submit-btn">Log In</button>
+        </form>
+        <p class="toggle-text">
+          <span id="toggleMsg">Don't have an account?</span>
+          <a href="#" id="toggleAuthMode">Sign Up</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         BADGE OVERFLOW POPUP
+         ================================================================ -->
+    <div id="badgeOverflowModal" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <span id="closeBadgeOverflowModal" class="close-btn">&times;</span>
+        <h2>All Badges</h2>
+        <div id="badgeOverflowList" class="badge-overflow-list"></div>
+      </div>
+    </div>
+
+    <footer>
+      <p>&copy; 2026 ShareNet Hub. Connecting creators, sharing visions.</p>
+    </footer>
+
+    <script type="module" src="profile.js"></script>
+    <script type="module" src="shared.js"></script>
+  </body>
+</html>
