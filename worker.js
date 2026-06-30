@@ -106,8 +106,7 @@ async function handleChatbot(request, env) {
   }
 }
 
-// ── Moderation handler (OpenAI /v1/moderations — free, no tokens used) ────────
-// Requires env.OPENAI_API_KEY to be set as a Worker secret.
+// ── Moderation handler (Llama Guard 3 on Workers AI — free, same binding as chatbot) ──
 async function handleModeration(request, env) {
   try {
     const body = await request.json();
@@ -115,70 +114,58 @@ async function handleModeration(request, env) {
 
     if (!text) return jsonResponse({ allowed: true });
 
-    // Guard against oversized payloads (OpenAI moderation caps input length)
-    if (text.length > 5000) text = text.slice(0, 5000);
+    // Guard against oversized payloads
+    if (text.length > 4000) text = text.slice(0, 4000);
 
-    const response = await fetch("https://api.openai.com/v1/moderations", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({ input: text }),
+    const result = await env.AI.run("@cf/meta/llama-guard-3-8b", {
+      messages: [{ role: "user", content: text }],
+      max_tokens: 50,
     });
 
-    if (!response.ok) {
-      // Fail open — don't block users if the API is down
-      console.error("OpenAI moderation error:", await response.text());
+    // Llama Guard 3 replies with the literal text "safe" or
+    // "unsafe\nS1,S10,..." listing violated category codes.
+    const raw = (result?.response || "").trim().toLowerCase();
+
+    if (!raw.startsWith("unsafe")) {
+      // "safe" or anything unexpected — fail open
       return jsonResponse({ allowed: true });
     }
 
-    const data = await response.json();
-    const result = data?.results?.[0];
+    // Extract category codes like "s1", "s10", "s11" from the response
+    const codes = raw.match(/s\d+/g) || [];
 
-    if (!result) return jsonResponse({ allowed: true });
+    const isSelfHarm = codes.includes("s11"); // Suicide & Self-Harm
+    const isHate = codes.includes("s10"); // Hate
+    const isViolence = codes.includes("s1"); // Violent Crimes
+    const isSexual = codes.includes("s3") || codes.includes("s4") || codes.includes("s12");
+    const isHarassment = codes.includes("s5"); // Defamation (closest available category)
 
-    if (result.flagged) {
-      const categories = result.categories;
-      const triggered = [];
-      const isSelfHarm =
-        categories["self-harm"] ||
-        categories["self-harm/intent"] ||
-        categories["self-harm/instructions"];
-
-      if (categories.hate || categories["hate/threatening"])
-        triggered.push("hate speech");
-      if (isSelfHarm) triggered.push("self-harm content");
-      if (categories.harassment || categories["harassment/threatening"])
-        triggered.push("harassment or threats");
-      if (categories.sexual || categories["sexual/minors"])
-        triggered.push("sexual content");
-      if (categories.violence || categories["violence/graphic"])
-        triggered.push("violent content");
-
-      // Self-harm gets a caring, resource-forward message instead of a
-      // generic "not allowed" block — this is the one category where the
-      // response itself matters, not just the moderation outcome.
-      if (isSelfHarm) {
-        return jsonResponse({
-          allowed: false,
-          isSelfHarm: true,
-          reason:
-            "It looks like this message might be about hurting yourself. You're not alone, and support is available. Please reach out to a trusted adult, school counselor, or a crisis line — in the US you can call or text 988 (Suicide & Crisis Lifeline) anytime.",
-        });
-      }
-
-      const reason =
-        triggered.length > 0
-          ? `Your message was flagged for ${triggered.join(
-              " and "
-            )} and isn't allowed on ShareNet.`
-          : "Your message was flagged as harmful content and isn't allowed on ShareNet.";
-
-      return jsonResponse({ allowed: false, reason });
+    // Self-harm gets a caring, resource-forward message instead of a
+    // generic "not allowed" block — this is the one category where the
+    // response itself matters, not just the moderation outcome.
+    if (isSelfHarm) {
+      return jsonResponse({
+        allowed: false,
+        isSelfHarm: true,
+        reason:
+          "It looks like this message might be about hurting yourself. You're not alone, and support is available. Please reach out to a trusted adult, school counselor, or a crisis line — in the US you can call or text 988 (Suicide & Crisis Lifeline) anytime.",
+      });
     }
 
-    return jsonResponse({ allowed: true });
+    const triggered = [];
+    if (isHate) triggered.push("hate speech");
+    if (isViolence) triggered.push("threats or violent content");
+    if (isHarassment) triggered.push("harassment or threats");
+    if (isSexual) triggered.push("sexual content");
+
+    const reason =
+      triggered.length > 0
+        ? `Your message was flagged for ${triggered.join(
+            " and "
+          )} and isn't allowed on ShareNet.`
+        : "Your message was flagged as harmful content and isn't allowed on ShareNet.";
+
+    return jsonResponse({ allowed: false, reason });
   } catch (error) {
     // Fail open on any error
     console.error("Moderation error:", error);
