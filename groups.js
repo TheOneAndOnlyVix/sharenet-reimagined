@@ -112,6 +112,136 @@ let stagingPollType = "";
 // Current user profile cache
 let currentUserProfile = { displayName: "", photoUrl: "" };
 
+// =============================================================================
+//  BADGES — read-only here. Mirrors the data model owned by members.js:
+//    badges/{badgeId}     → { title, iconType, icon, textColor, bgColor }
+//    users/{uid}.badgeIds → array of badge IDs that user has been awarded
+//  Both are kept live so badge pills on posts/comments stay current even
+//  if an admin awards/revokes a badge while someone's viewing the feed.
+// =============================================================================
+let currentBadgesMap = {};
+let userBadgeIdsMap = {}; // uid -> array of badge ids
+
+onSnapshot(collection(db, "badges"), (snapshot) => {
+  const updated = {};
+  snapshot.forEach((d) => {
+    updated[d.id] = { id: d.id, ...d.data() };
+  });
+  currentBadgesMap = updated;
+  refreshAllVisibleAuthorBadges();
+});
+
+onSnapshot(collection(db, "users"), (snapshot) => {
+  const updated = {};
+  snapshot.forEach((d) => {
+    const data = d.data();
+    if (data.badgeIds && data.badgeIds.length > 0) {
+      updated[d.id] = data.badgeIds;
+    }
+  });
+  userBadgeIdsMap = updated;
+  refreshAllVisibleAuthorBadges();
+});
+
+function renderBadgeIconMarkup(badge) {
+  if (!badge) return "";
+  if (badge.iconType === "image" && badge.icon) {
+    return `<img src="${badge.icon}" alt="" />`;
+  }
+  return `<span class="material-symbols-outlined">${
+    badge.icon || "military_tech"
+  }</span>`;
+}
+
+function renderBadgePillMarkup(badge) {
+  if (!badge) return "";
+  const textColor = badge.textColor || "#ffffff";
+  const bgColor = badge.bgColor || "#a855f7";
+  return `
+    <span class="user-badge-pill" style="color:${textColor}; background:${bgColor};" title="${badge.title}">
+      <span class="user-badge-icon">${renderBadgeIconMarkup(badge)}</span>
+      <span>${badge.title}</span>
+    </span>
+  `;
+}
+
+// Returns badge-row HTML for a given author UID, or "" if they have none.
+// `idPrefix` must be unique per rendered element (post id / comment id)
+// to avoid duplicate-id collisions when multiple cards are on screen.
+function renderAuthorBadgeRow(authorUid, idPrefix) {
+  const badgeIds = userBadgeIdsMap[authorUid];
+  if (!badgeIds || badgeIds.length === 0) return "";
+
+  const primaryId = badgeIds[badgeIds.length - 1];
+  const primaryBadge = currentBadgesMap[primaryId];
+  if (!primaryBadge) return "";
+
+  const overflowCount = badgeIds.length - 1;
+  const overflowTrigger =
+    overflowCount > 0
+      ? `<button type="button" class="badge-overflow-trigger" data-badge-ids="${badgeIds.join(
+          ","
+        )}" id="${idPrefix}-overflow">+${overflowCount}</button>`
+      : "";
+
+  return `
+    <span class="user-badge-row">
+      ${renderBadgePillMarkup(primaryBadge)}
+      ${overflowTrigger}
+    </span>
+  `;
+}
+
+function bindBadgeOverflowTriggers(scopeEl) {
+  const root = scopeEl || document;
+  root.querySelectorAll(".badge-overflow-trigger").forEach((btn) => {
+    if (btn._badgeBound) return; // avoid rebinding the same node repeatedly
+    btn._badgeBound = true;
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const ids = (btn.getAttribute("data-badge-ids") || "")
+        .split(",")
+        .filter(Boolean);
+      openBadgeOverflowPopup(ids);
+    };
+  });
+}
+
+function openBadgeOverflowPopup(badgeIds) {
+  const modal = document.getElementById("badgeOverflowModal");
+  const list = document.getElementById("badgeOverflowList");
+  if (!modal || !list) return;
+  list.innerHTML = badgeIds
+    .map((id) => {
+      const b = currentBadgesMap[id];
+      if (!b) return "";
+      return `<div class="badge-overflow-item">${renderBadgePillMarkup(b)}</div>`;
+    })
+    .join("");
+  modal.style.display = "flex";
+}
+
+const closeBadgeOverflowModalBtn = document.getElementById(
+  "closeBadgeOverflowModal"
+);
+if (closeBadgeOverflowModalBtn) {
+  closeBadgeOverflowModalBtn.addEventListener("click", () => {
+    document.getElementById("badgeOverflowModal").style.display = "none";
+  });
+}
+
+// Re-applies badge rows to every author-name element currently rendered
+// in the DOM, without rebuilding entire post/comment cards. Cheaper than
+// a full re-render and avoids disrupting open comment sections / scroll.
+function refreshAllVisibleAuthorBadges() {
+  document.querySelectorAll("[data-badge-author-uid]").forEach((el) => {
+    const uid = el.getAttribute("data-badge-author-uid");
+    const idPrefix = el.getAttribute("data-badge-id-prefix") || uid;
+    el.innerHTML = renderAuthorBadgeRow(uid, idPrefix);
+  });
+  bindBadgeOverflowTriggers();
+}
+
 // DOM Query Bindings
 const authModal = document.getElementById("authModal");
 const authNavBtn = document.getElementById("authNavBtn");
@@ -979,7 +1109,15 @@ function filterAndRenderPosts(filterQuery) {
             <div style="display:flex;align-items:center;gap:10px;">
               <div class="post-author-avatar">${avatarInner}</div>
               <div class="post-meta-details">
-                <span class="author-name">${displayName}</span>
+                <span style="display:flex; align-items:center;">
+                  <span class="author-name">${displayName}</span>
+                  <span class="user-badge-row-slot" data-badge-author-uid="${
+                    post.authorId || ""
+                  }" data-badge-id-prefix="post-${post.id}">${renderAuthorBadgeRow(
+        post.authorId,
+        `post-${post.id}`
+      )}</span>
+                </span>
                 <span class="post-timestamp">${
                   post.createdAt
                     ? new Date(
@@ -1047,6 +1185,7 @@ function filterAndRenderPosts(filterQuery) {
       postsStream.appendChild(cardNode);
 
       bindCardEventListeners(cardNode, post.id);
+      bindBadgeOverflowTriggers(cardNode);
 
       if (openCommentSectionsMap[post.id]) {
         bindRealTimeCommentsStream(post.id);
@@ -1278,12 +1417,21 @@ function bindRealTimeCommentsStream(postId) {
         commentItem.innerHTML = `
         <div class="comment-avatar">${commentAvatar}</div>
         <div style="display:flex;flex-direction:column;flex:1;">
-          <span class="comment-author-name">${displayAuthor}</span>
+          <span style="display:flex; align-items:center;">
+            <span class="comment-author-name">${displayAuthor}</span>
+            <span class="user-badge-row-slot" data-badge-author-uid="${
+              comm.authorUid || ""
+            }" data-badge-id-prefix="comment-${cId}">${renderAuthorBadgeRow(
+        comm.authorUid,
+        `comment-${cId}`
+      )}</span>
+          </span>
           <span class="comment-body-text">${comm.text}</span>
         </div>
         ${commentDelBtn}
       `;
         listContainer.appendChild(commentItem);
+        bindBadgeOverflowTriggers(commentItem);
 
         if (isCommentOwner || isAdmin) {
           const dcBtn = document.getElementById(`del-comm-${postId}-${cId}`);
