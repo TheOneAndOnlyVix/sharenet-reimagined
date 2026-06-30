@@ -10,11 +10,15 @@ import {
   getFirestore,
   doc,
   getDoc,
+  getDocs,
+  setDoc,
   collection,
   onSnapshot,
   deleteDoc,
   addDoc,
   updateDoc,
+  arrayUnion,
+  arrayRemove,
   query,
   orderBy,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
@@ -56,6 +60,53 @@ const membersAdminPanel = document.getElementById("membersAdminPanel");
 const userSelectDropdown = document.getElementById("userSelectDropdown");
 const promoteToAdminBtn = document.getElementById("promoteToAdminBtn");
 const demoteToMemberBtn = document.getElementById("demoteToMemberBtn");
+
+// Badge System Elements
+const awardBadgeBtn = document.getElementById("awardBadgeBtn");
+const manageBadgesBtn = document.getElementById("manageBadgesBtn");
+const badgeManagerModal = document.getElementById("badgeManagerModal");
+const closeBadgeManagerModal = document.getElementById("closeBadgeManagerModal");
+const badgeManagerList = document.getElementById("badgeManagerList");
+const openCreateBadgeBtn = document.getElementById("openCreateBadgeBtn");
+const createBadgeModal = document.getElementById("createBadgeModal");
+const closeCreateBadgeModal = document.getElementById("closeCreateBadgeModal");
+const badgeTitleInput = document.getElementById("badgeTitleInput");
+const badgeTextColorInput = document.getElementById("badgeTextColorInput");
+const badgeBgColorInput = document.getElementById("badgeBgColorInput");
+const badgeIconTabs = document.querySelectorAll(".badge-icon-tab");
+const badgeIconLibraryPanel = document.getElementById("badgeIconLibraryPanel");
+const badgeIconUploadPanel = document.getElementById("badgeIconUploadPanel");
+const badgeIconGrid = document.getElementById("badgeIconGrid");
+const badgeIconDropzone = document.getElementById("badgeIconDropzone");
+const badgeIconFileInput = document.getElementById("badgeIconFileInput");
+const badgeLivePreview = document.getElementById("badgeLivePreview");
+const badgeLivePreviewIcon = document.getElementById("badgeLivePreviewIcon");
+const badgeLivePreviewText = document.getElementById("badgeLivePreviewText");
+const submitCreateBadgeBtn = document.getElementById("submitCreateBadgeBtn");
+const badgeOverflowModal = document.getElementById("badgeOverflowModal");
+const closeBadgeOverflowModal = document.getElementById("closeBadgeOverflowModal");
+const badgeOverflowList = document.getElementById("badgeOverflowList");
+const awardBadgeModal = document.getElementById("awardBadgeModal");
+const closeAwardBadgeModal = document.getElementById("closeAwardBadgeModal");
+const awardBadgeTargetLabel = document.getElementById("awardBadgeTargetLabel");
+const awardBadgePickerList = document.getElementById("awardBadgePickerList");
+
+// Curated Material Symbols icon set for the badge library
+const BADGE_ICON_LIBRARY = [
+  "military_tech", "star", "verified", "emoji_events", "local_fire_department",
+  "bolt", "favorite", "diamond", "rocket_launch", "shield",
+  "workspace_premium", "auto_awesome", "celebration", "groups", "psychology",
+  "forum", "campaign", "trophy", "handshake", "thumb_up",
+  "school", "music_note", "palette", "sports_esports", "code",
+  "camera_alt", "edit", "lightbulb", "public", "volunteer_activism",
+];
+
+// In-memory cache of badge docs, keyed by badge ID — populated by the
+// badges live listener and read by all rendering functions below.
+let currentBadgesMap = {};
+let selectedIconType = "symbol"; // "symbol" | "image"
+let selectedIconValue = "military_tech"; // symbol name OR base64 image data
+let isCreatingBadge = false;
 
 let isLoginMode = true;
 
@@ -195,10 +246,471 @@ if (demoteToMemberBtn) {
   });
 }
 
+// =============================================================================
+//  BADGES SYSTEM
+//  Data model:
+//    badges/{badgeId}      → { title, iconType: 'symbol'|'image', icon,
+//                               textColor, bgColor, createdAt }
+//    users/{uid}.badgeIds  → array of badge IDs awarded to that user
+// =============================================================================
+
+function isCurrentUserAdmin() {
+  return (
+    auth.currentUser &&
+    (auth.currentUser.email === SITE_ADMIN_EMAIL ||
+      currentGlobalRole === "admin")
+  );
+}
+
+// Renders the small icon markup for a single badge (used everywhere a
+// badge is displayed: pills, manager list, live preview, overflow popup)
+function renderBadgeIconMarkup(badge) {
+  if (!badge) return "";
+  if (badge.iconType === "image" && badge.icon) {
+    return `<img src="${badge.icon}" alt="" />`;
+  }
+  return `<span class="material-symbols-outlined">${
+    badge.icon || "military_tech"
+  }</span>`;
+}
+
+// Renders a single badge pill with its custom colors
+function renderBadgePillMarkup(badge) {
+  if (!badge) return "";
+  const textColor = badge.textColor || "#ffffff";
+  const bgColor = badge.bgColor || "#a855f7";
+  return `
+    <span class="user-badge-pill" style="color:${textColor}; background:${bgColor};" title="${badge.title}">
+      <span class="user-badge-icon">${renderBadgeIconMarkup(badge)}</span>
+      <span>${badge.title}</span>
+    </span>
+  `;
+}
+
+// Given an array of badge IDs for a user, returns the HTML for a badge
+// row: the first (most recently awarded) badge pill, plus a "+N" trigger
+// if the user has more than one. Used on member cards, posts, comments.
+// `containerIdPrefix` must be unique per render context to avoid DOM id
+// collisions across multiple cards on the same page.
+function renderUserBadgeRow(badgeIds, containerIdPrefix) {
+  if (!badgeIds || badgeIds.length === 0) return "";
+
+  // Most recently awarded badge is the one shown inline (array push order)
+  const primaryId = badgeIds[badgeIds.length - 1];
+  const primaryBadge = currentBadgesMap[primaryId];
+  if (!primaryBadge) return "";
+
+  const overflowCount = badgeIds.length - 1;
+  const overflowTrigger =
+    overflowCount > 0
+      ? `<button type="button" class="badge-overflow-trigger" data-badge-ids="${badgeIds.join(
+          ","
+        )}" id="${containerIdPrefix}-overflow">+${overflowCount}</button>`
+      : "";
+
+  return `
+    <span class="user-badge-row">
+      ${renderBadgePillMarkup(primaryBadge)}
+      ${overflowTrigger}
+    </span>
+  `;
+}
+
+// Wires up click handlers for all ".badge-overflow-trigger" buttons
+// currently in the DOM. Safe to call repeatedly after re-renders.
+function bindBadgeOverflowTriggers() {
+  document.querySelectorAll(".badge-overflow-trigger").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const ids = (btn.getAttribute("data-badge-ids") || "")
+        .split(",")
+        .filter(Boolean);
+      openBadgeOverflowPopup(ids);
+    };
+  });
+}
+
+function openBadgeOverflowPopup(badgeIds) {
+  if (!badgeOverflowList || !badgeOverflowModal) return;
+  badgeOverflowList.innerHTML = badgeIds
+    .map((id) => {
+      const b = currentBadgesMap[id];
+      if (!b) return "";
+      return `<div class="badge-overflow-item">${renderBadgePillMarkup(
+        b
+      )}</div>`;
+    })
+    .join("");
+  badgeOverflowModal.style.display = "flex";
+}
+
+if (closeBadgeOverflowModal) {
+  closeBadgeOverflowModal.addEventListener("click", () => {
+    badgeOverflowModal.style.display = "none";
+  });
+}
+
+// ── Live badge catalog listener — runs for everyone (logged in or not)
+//    so badge pills can render correctly across the whole site ──
+onSnapshot(collection(db, "badges"), (snapshot) => {
+  const updated = {};
+  snapshot.forEach((d) => {
+    updated[d.id] = { id: d.id, ...d.data() };
+  });
+  currentBadgesMap = updated;
+
+  // Re-render whatever's currently visible so badge edits/deletes reflect live
+  renderMembersDirectory();
+  if (badgeManagerModal && badgeManagerModal.style.display === "flex") {
+    renderBadgeManagerList();
+  }
+});
+
+// ── Badge Manager modal open/close ──
+if (manageBadgesBtn) {
+  manageBadgesBtn.addEventListener("click", () => {
+    if (!isCurrentUserAdmin()) return;
+    renderBadgeManagerList();
+    badgeManagerModal.style.display = "flex";
+  });
+}
+if (closeBadgeManagerModal) {
+  closeBadgeManagerModal.addEventListener("click", () => {
+    badgeManagerModal.style.display = "none";
+  });
+}
+
+function renderBadgeManagerList() {
+  if (!badgeManagerList) return;
+  const badgeEntries = Object.values(currentBadgesMap);
+
+  if (badgeEntries.length === 0) {
+    badgeManagerList.innerHTML = `<p class="loading-text">No badges created yet.</p>`;
+    return;
+  }
+
+  badgeManagerList.innerHTML = badgeEntries
+    .map(
+      (b) => `
+      <div class="badge-manager-row">
+        ${renderBadgePillMarkup(b)}
+        <div class="badge-manager-row-info">
+          <span class="badge-manager-row-meta">${b.title}</span>
+        </div>
+        <button type="button" class="badge-manager-delete-btn" data-delete-badge-id="${b.id}" title="Delete badge">
+          <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
+        </button>
+      </div>
+    `
+    )
+    .join("");
+
+  badgeManagerList.querySelectorAll("[data-delete-badge-id]").forEach((btn) => {
+    btn.onclick = () => {
+      const badgeId = btn.getAttribute("data-delete-badge-id");
+      const badge = currentBadgesMap[badgeId];
+      if (
+        !confirm(
+          `Delete the "${
+            badge ? badge.title : "badge"
+          }" badge? This will remove it from everyone who has it.`
+        )
+      )
+        return;
+      deleteBadgeEverywhere(badgeId);
+    };
+  });
+}
+
+// Deletes a badge doc AND removes it from every user who currently has it,
+// so no orphaned badge IDs linger on user records.
+async function deleteBadgeEverywhere(badgeId) {
+  try {
+    const usersSnap = await getDocs(collection(db, "users"));
+    const removalPromises = [];
+    usersSnap.forEach((userDoc) => {
+      const data = userDoc.data();
+      if (data.badgeIds && data.badgeIds.includes(badgeId)) {
+        removalPromises.push(
+          updateDoc(doc(db, "users", userDoc.id), {
+            badgeIds: arrayRemove(badgeId),
+          })
+        );
+      }
+    });
+    await Promise.all(removalPromises);
+    await deleteDoc(doc(db, "badges", badgeId));
+  } catch (err) {
+    alert("Error deleting badge: " + err.message);
+  }
+}
+
+// ── Create Badge modal ──
+if (openCreateBadgeBtn) {
+  openCreateBadgeBtn.addEventListener("click", () => {
+    resetCreateBadgeForm();
+    createBadgeModal.style.display = "flex";
+  });
+}
+if (closeCreateBadgeModal) {
+  closeCreateBadgeModal.addEventListener("click", () => {
+    createBadgeModal.style.display = "none";
+  });
+}
+
+function resetCreateBadgeForm() {
+  if (badgeTitleInput) badgeTitleInput.value = "";
+  if (badgeTextColorInput) badgeTextColorInput.value = "#ffffff";
+  if (badgeBgColorInput) badgeBgColorInput.value = "#a855f7";
+  selectedIconType = "symbol";
+  selectedIconValue = BADGE_ICON_LIBRARY[0];
+  switchIconTab("library");
+  highlightSelectedIconOption();
+  updateBadgeLivePreview();
+}
+
+// Populate the icon library grid once on load
+if (badgeIconGrid) {
+  badgeIconGrid.innerHTML = BADGE_ICON_LIBRARY.map(
+    (iconName) => `
+      <button type="button" class="badge-icon-option" data-icon-name="${iconName}">
+        <span class="material-symbols-outlined">${iconName}</span>
+      </button>
+    `
+  ).join("");
+
+  badgeIconGrid.querySelectorAll(".badge-icon-option").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedIconType = "symbol";
+      selectedIconValue = btn.getAttribute("data-icon-name");
+      highlightSelectedIconOption();
+      updateBadgeLivePreview();
+    });
+  });
+}
+
+function highlightSelectedIconOption() {
+  if (!badgeIconGrid) return;
+  badgeIconGrid.querySelectorAll(".badge-icon-option").forEach((btn) => {
+    btn.classList.toggle(
+      "selected",
+      selectedIconType === "symbol" &&
+        btn.getAttribute("data-icon-name") === selectedIconValue
+    );
+  });
+}
+
+// Icon tab switching (Library vs Upload)
+badgeIconTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    switchIconTab(tab.getAttribute("data-tab"));
+  });
+});
+
+function switchIconTab(tabName) {
+  badgeIconTabs.forEach((t) =>
+    t.classList.toggle("active", t.getAttribute("data-tab") === tabName)
+  );
+  if (badgeIconLibraryPanel)
+    badgeIconLibraryPanel.style.display = tabName === "library" ? "block" : "none";
+  if (badgeIconUploadPanel)
+    badgeIconUploadPanel.style.display = tabName === "upload" ? "block" : "none";
+}
+
+// Image upload — click to browse
+if (badgeIconDropzone && badgeIconFileInput) {
+  badgeIconDropzone.addEventListener("click", () => badgeIconFileInput.click());
+
+  badgeIconFileInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (file) handleBadgeIconFile(file);
+  });
+
+  // Drag and drop support
+  ["dragenter", "dragover"].forEach((evt) => {
+    badgeIconDropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      badgeIconDropzone.classList.add("drag-over");
+    });
+  });
+  ["dragleave", "drop"].forEach((evt) => {
+    badgeIconDropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      badgeIconDropzone.classList.remove("drag-over");
+    });
+  });
+  badgeIconDropzone.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files[0];
+    if (file) handleBadgeIconFile(file);
+  });
+}
+
+function handleBadgeIconFile(file) {
+  if (!file.type.startsWith("image/")) {
+    alert("Please choose an image file.");
+    return;
+  }
+  const MAX_BYTES = 100 * 1024; // 100KB cap — badge icons are tiny
+  if (file.size > MAX_BYTES) {
+    alert(
+      `Image is too large (${(file.size / 1024).toFixed(
+        0
+      )} KB). Please use an image under 100 KB.`
+    );
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    selectedIconType = "image";
+    selectedIconValue = reader.result;
+    updateBadgeLivePreview();
+    badgeIconDropzone.innerHTML = `
+      <img src="${reader.result}" style="width:40px;height:40px;object-fit:cover;border-radius:50%;" />
+      <p>Image selected — click to change</p>
+    `;
+  };
+  reader.onerror = () => alert("Could not read that image. Please try again.");
+  reader.readAsDataURL(file);
+}
+
+// Live preview updates
+function updateBadgeLivePreview() {
+  if (!badgeLivePreview) return;
+  const title = (badgeTitleInput && badgeTitleInput.value.trim()) || "Badge Title";
+  const textColor = (badgeTextColorInput && badgeTextColorInput.value) || "#ffffff";
+  const bgColor = (badgeBgColorInput && badgeBgColorInput.value) || "#a855f7";
+
+  badgeLivePreview.style.color = textColor;
+  badgeLivePreview.style.background = bgColor;
+  badgeLivePreviewText.innerText = title;
+  badgeLivePreviewIcon.innerHTML =
+    selectedIconType === "image"
+      ? `<img src="${selectedIconValue}" alt="" />`
+      : `<span class="material-symbols-outlined">${selectedIconValue}</span>`;
+}
+
+[badgeTitleInput, badgeTextColorInput, badgeBgColorInput].forEach((el) => {
+  if (el) el.addEventListener("input", updateBadgeLivePreview);
+});
+
+// Submit — create the badge doc
+if (submitCreateBadgeBtn) {
+  submitCreateBadgeBtn.addEventListener("click", async () => {
+    if (isCreatingBadge) return; // prevent double-submit
+    const title = badgeTitleInput ? badgeTitleInput.value.trim() : "";
+    if (!title) {
+      alert("Please enter a badge title.");
+      return;
+    }
+    if (!isCurrentUserAdmin()) {
+      alert("Only admins can create badges.");
+      return;
+    }
+
+    isCreatingBadge = true;
+    submitCreateBadgeBtn.disabled = true;
+    submitCreateBadgeBtn.innerText = "Creating...";
+
+    try {
+      await addDoc(collection(db, "badges"), {
+        title,
+        iconType: selectedIconType,
+        icon: selectedIconValue,
+        textColor: badgeTextColorInput.value,
+        bgColor: badgeBgColorInput.value,
+        createdAt: new Date(),
+        createdBy: auth.currentUser ? auth.currentUser.uid : null,
+      });
+      createBadgeModal.style.display = "none";
+      // Re-open the manager so the admin sees their new badge in the list
+      renderBadgeManagerList();
+      badgeManagerModal.style.display = "flex";
+    } catch (err) {
+      alert("Error creating badge: " + err.message);
+    } finally {
+      isCreatingBadge = false;
+      submitCreateBadgeBtn.disabled = false;
+      submitCreateBadgeBtn.innerText = "Create Badge";
+    }
+  });
+}
+
+// ── Award Badge button — opens a modal picker for the currently
+//    selected user in the admin dropdown ──
+if (awardBadgeBtn) {
+  awardBadgeBtn.addEventListener("click", () => {
+    const targetUid = userSelectDropdown.value;
+    if (!targetUid) return alert("Select a user first.");
+
+    const badgeEntries = Object.values(currentBadgesMap);
+    if (badgeEntries.length === 0) {
+      alert("No badges exist yet. Create one first via Manage Badges.");
+      return;
+    }
+
+    openAwardBadgeModal(targetUid);
+  });
+}
+
+function openAwardBadgeModal(targetUid) {
+  if (!awardBadgeModal || !awardBadgePickerList) return;
+
+  const targetLabel =
+    userSelectDropdown.options[userSelectDropdown.selectedIndex]?.text ||
+    "selected user";
+  if (awardBadgeTargetLabel)
+    awardBadgeTargetLabel.innerText = `Awarding to: ${targetLabel}`;
+
+  const badgeEntries = Object.values(currentBadgesMap);
+  awardBadgePickerList.innerHTML = badgeEntries
+    .map(
+      (b) => `
+      <div class="badge-overflow-item badge-pickable" data-award-badge-id="${b.id}">
+        ${renderBadgePillMarkup(b)}
+      </div>
+    `
+    )
+    .join("");
+
+  awardBadgePickerList.querySelectorAll("[data-award-badge-id]").forEach((row) => {
+    row.onclick = () => {
+      const badgeId = row.getAttribute("data-award-badge-id");
+      const badge = currentBadgesMap[badgeId];
+      updateDoc(doc(db, "users", targetUid), {
+        badgeIds: arrayUnion(badgeId),
+      })
+        .then(() => {
+          awardBadgeModal.style.display = "none";
+          alert(`Awarded "${badge ? badge.title : "badge"}"!`);
+        })
+        .catch((err) => alert("Error: " + err.message));
+    };
+  });
+
+  awardBadgeModal.style.display = "flex";
+}
+
+if (closeAwardBadgeModal) {
+  closeAwardBadgeModal.addEventListener("click", () => {
+    awardBadgeModal.style.display = "none";
+  });
+}
+
 // Render the Directory and populate Admin Dropdown
+let unsubscribeMembersDirectory = null;
+
 function renderMembersDirectory() {
   if (!membersGrid) return;
-  onSnapshot(collection(db, "users"), (snapshot) => {
+
+  // Detach any previous listener before creating a new one — this function
+  // is now called both on auth changes AND on every badge catalog update,
+  // so without this, listeners would stack up indefinitely.
+  if (unsubscribeMembersDirectory) {
+    unsubscribeMembersDirectory();
+    unsubscribeMembersDirectory = null;
+  }
+
+  unsubscribeMembersDirectory = onSnapshot(collection(db, "users"), (snapshot) => {
     membersGrid.innerHTML = "";
     if (userSelectDropdown)
       userSelectDropdown.innerHTML =
@@ -253,18 +765,60 @@ function renderMembersDirectory() {
           ? `<p class="member-display-name">${displayName}</p>`
           : "";
 
+      const badgeIds = userData.badgeIds || [];
+      const badgeRowHTML = renderUserBadgeRow(badgeIds, `card-${userDocId}`);
+
+      // Admin-only inline revoke control, listing currently held badges
+      const revokeControlsHTML =
+        isAdmin && badgeIds.length > 0
+          ? `<div class="badge-overflow-list" style="margin-top:10px; width:100%;">
+              ${badgeIds
+                .map((bId) => {
+                  const b = currentBadgesMap[bId];
+                  if (!b) return "";
+                  return `
+                    <div class="badge-overflow-item" style="justify-content:space-between;">
+                      ${renderBadgePillMarkup(b)}
+                      <button type="button" class="badge-manager-delete-btn" data-revoke-badge="${bId}" data-revoke-user="${userDocId}" title="Revoke">
+                        <span class="material-symbols-outlined" style="font-size:16px;">close</span>
+                      </button>
+                    </div>
+                  `;
+                })
+                .join("")}
+            </div>`
+          : "";
+
       const cardHTML = `
         <div class="member-card">
           <div class="member-card-avatar">${avatarInner}</div>
           <h3 class="member-name">@${username}</h3>
           ${displayNameRow}
+          ${badgeRowHTML ? `<div class="member-card-badges">${badgeRowHTML}</div>` : ""}
           <p ${roleBadgeStyle}>${userRole}</p>
+          ${revokeControlsHTML}
           <div style="margin-top: auto; width: 100%; padding-top: 16px;">
             ${deleteActionHTML}
           </div>
         </div>
       `;
       membersGrid.innerHTML += cardHTML;
+
+      if (badgeIds.length > 0) {
+        setTimeout(() => {
+          bindBadgeOverflowTriggers();
+          document.querySelectorAll("[data-revoke-badge]").forEach((btn) => {
+            btn.onclick = () => {
+              const bId = btn.getAttribute("data-revoke-badge");
+              const uId = btn.getAttribute("data-revoke-user");
+              if (!confirm("Revoke this badge from this user?")) return;
+              updateDoc(doc(db, "users", uId), {
+                badgeIds: arrayRemove(bId),
+              }).catch((err) => alert("Error: " + err.message));
+            };
+          });
+        }, 50);
+      }
 
       if (isMe || isAdmin) {
         setTimeout(() => {
