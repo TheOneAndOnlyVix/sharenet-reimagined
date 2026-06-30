@@ -1,0 +1,6 @@
+name = "sharenet-assistant"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# We will store the OpenAI API key securely in Cloudflare Secrets, 
+# NOT in this file.

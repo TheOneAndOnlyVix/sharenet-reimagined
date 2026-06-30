@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Groups | Sharenet Reimagined</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- ================================================================
+         TOP NAVIGATION BAR
+         ================================================================ -->
+    <nav class="navbar">
+      <div class="logo">ShareNet</div>
+      <ul class="nav-links">
+        <li><a href="index.html">Home</a></li>
+        <li><a href="groups.html" class="active">Groups</a></li>
+        <li>
+          <a href="notifications.html" id="navNotificationsLink"
+            >Notifications</a
+          >
+        </li>
+        <li><a href="messenger.html">Messenger</a></li>
+        <li><a href="events.html">Events</a></li>
+        <li><a href="members.html">Members</a></li>
+        <li><a href="blog.html">Blog</a></li>
+        <li><a href="calendar.html">Calendar</a></li>
+      </ul>
+      <div class="nav-right-container">
+        <!-- Notification Bell -->
+        <div id="notificationBellBtn" class="bell-wrapper">
+          <svg
+            class="bell-icon"
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          <span id="notificationBadge" class="badge" style="display: none"
+            >0</span
+          >
+        </div>
+        <!-- Profile Avatar -->
+        <div
+          id="navProfileAvatar"
+          class="nav-profile-avatar"
+          style="display: none"
+        >
+          ?
+        </div>
+        <!-- Auth Button -->
+        <div class="login-btn">
+          <button id="authNavBtn">Log In</button>
+        </div>
+      </div>
+    </nav>
+
+    <!-- ================================================================
+         MAIN CONTENT GRID
+         ================================================================ -->
+    <main class="container">
+      <!-- LEFT: FEED -->
+      <section class="feed-section">
+        <div class="feed-header-card">
+          <h1 id="feedTitle">Main Feed</h1>
+          <p id="feedDescription">Displaying all public content</p>
+          <div style="margin-top: 15px">
+            <input
+              type="text"
+              id="globalFeedSearchBar"
+              placeholder="Search posts..."
+            />
+          </div>
+        </div>
+
+        <!-- Admin Panel (only visible to admin) -->
+        <div id="adminPanel" class="admin-panel" style="display: none">
+          <div class="dropdown">
+            <button id="adminDropdownBtn" class="dropbtn">
+              Pending Group Requests (<span id="adminReqCount">0</span>)
+            </button>
+            <div id="adminDropdownContent" class="dropdown-content"></div>
+          </div>
+        </div>
+
+        <!-- Create Post Trigger Box -->
+        <div
+          id="publicGroupJoinUi"
+          style="display: none; text-align: center; margin-bottom: 20px"
+        >
+          <button id="joinPublicGroupBtn" class="submit-btn">
+            + Join Group to see posts in Main Feed
+          </button>
+        </div>
+
+        <div
+          id="groupGateUi"
+          class="empty-feed-placeholder"
+          style="display: none; padding: 40px 20px"
+        >
+          <h3 style="color: var(--text-main); margin-bottom: 8px">
+            Private Group
+          </h3>
+          <p style="margin-bottom: 16px">
+            You must be a member to view or post content here.
+          </p>
+          <button id="requestJoinGroupBtn" class="submit-btn">
+            Request to Join
+          </button>
+          <button id="cancelJoinGroupBtn" class="secondary-btn-style">
+            Cancel
+          </button>
+        </div>
+
+        <div
+          id="groupRequestsPanel"
+          class="admin-panel"
+          style="display: none; margin-bottom: 20px"
+        >
+          <div class="dropdown">
+            <button id="groupRequestsDropdownBtn" class="dropbtn">
+              Member Requests (<span id="groupReqCount">0</span>)
+            </button>
+            <div
+              id="groupRequestsDropdownContent"
+              class="dropdown-content"
+            ></div>
+          </div>
+        </div>
+        <div id="createPostBox" class="create-post-box" style="display: none">
+          <div class="post-box-trigger">
+            <input
+              type="text"
+              id="openComposerBtn"
+              placeholder="Make a post!"
+              readonly
+            />
+          </div>
+        </div>
+
+        <!-- Live Posts Stream -->
+        <div id="postsStream" class="posts-stream"></div>
+      </section>
+
+      <!-- RIGHT: SIDEBAR -->
+      <aside class="sidebar">
+        <div class="widget groups-list-card">
+          <div class="sidebar-header-row">
+            <h2>Groups</h2>
+            <button id="openCreateGroupModalBtn" class="create-group-btn">
+              + Request Group
+            </button>
+          </div>
+          <div id="groupsScrollList" class="groups-scroll-list">
+            <div class="group-item active" id="target-grp-global">
+              Main Feed
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- ================================================================
+         POST COMPOSER MODAL
+         ================================================================ -->
+    <div id="composerModal" class="modal-overlay" style="display: none">
+      <div class="composer-container">
+        <div class="composer-header">
+          <div
+            id="compAvatar"
+            style="
+              width: 38px;
+              height: 38px;
+              background: linear-gradient(135deg, #3b82f6, #bb86fc);
+              color: #fff;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-weight: bold;
+              font-size: 16px;
+              flex-shrink: 0;
+            "
+          >
+            U
+          </div>
+          <div class="header-meta-info">
+            <div id="compUser" class="username-label">User</div>
+            <div class="destination-pill">
+              Posting to: <span id="compTargetGroup">Main Feed</span>
+            </div>
+          </div>
+          <span id="closeComposerModal" class="close-composer-btn"
+            >&times;</span
+          >
+        </div>
+
+        <div class="composer-body">
+          <input
+            type="text"
+            id="postTitleInput"
+            placeholder="Post Headline Title (Optional)"
+            class="composer-title-field"
+          />
+          <textarea
+            id="postTextInput"
+            placeholder="Share your thoughts, document files, custom templates or code blocks..."
+            class="composer-text-area"
+          ></textarea>
+
+          <!-- Attachment Preview -->
+          <div
+            id="composerAttachmentPreview"
+            class="attachment-preview-box"
+            style="display: none"
+          >
+            <div id="attachmentRenderArea" class="render-area"></div>
+            <div
+              id="attachmentLoadingOverlay"
+              class="attachment-loading"
+              style="display: none"
+            >
+              <svg
+                class="spin-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                width="20"
+                height="20"
+              >
+                <path
+                  d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
+                />
+              </svg>
+              <span>Uploading...</span>
+            </div>
+            <button id="clearAttachmentBtn" class="clear-attach-btn">
+              Remove
+            </button>
+          </div>
+
+          <!-- HTML Embed Indicator -->
+          <div
+            id="attachedHtmlPreview"
+            style="
+              display: none;
+              padding: 8px;
+              background: #1e293b;
+              border-left: 4px solid #bb86fc;
+              margin-top: 10px;
+              font-size: 12px;
+              color: #a0aec0;
+              border-radius: 0 6px 6px 0;
+            "
+          ></div>
+        </div>
+
+        <!-- Composer Toolbar -->
+        <div class="composer-toolbar">
+          <div class="toolbar-media-tools">
+            <button id="toolBtnImage" class="tool-btn" title="Attach Image">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+            </button>
+            <button id="toolBtnVideo" class="tool-btn" title="Attach Video">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polygon points="23 7 16 12 23 17 23 7" />
+                <rect x="1" y="5" width="15" height="14" rx="2" />
+              </svg>
+            </button>
+            <button id="toolBtnFile" class="tool-btn" title="Attach File">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path
+                  d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+                />
+              </svg>
+            </button>
+            <button id="toolBtnEmoji" class="tool-btn" title="Emoji Picker">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M8 13s1.5 2 4 2 4-2 4-2" />
+                <line x1="9" y1="9" x2="9.01" y2="9" stroke-width="3" />
+                <line x1="15" y1="9" x2="15.01" y2="9" stroke-width="3" />
+              </svg>
+            </button>
+            <button id="toolBtnPoll" class="tool-btn" title="Create Poll">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <line x1="18" y1="20" x2="18" y2="10" />
+                <line x1="12" y1="20" x2="12" y2="4" />
+                <line x1="6" y1="20" x2="6" y2="14" />
+              </svg>
+            </button>
+            <button
+              id="togglePluginSubmenu"
+              class="tool-btn"
+              title="More Options"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="5" r="1.2" />
+                <circle cx="12" cy="12" r="1.2" />
+                <circle cx="12" cy="19" r="1.2" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="toolbar-actions">
+            <button id="cancelComposerBtn" class="btn-secondary">Cancel</button>
+            <button id="publishPostBtn" class="btn-primary">Publish</button>
+          </div>
+
+          <div id="pluginSubmenu" class="plugin-submenu" style="display: none">
+            <button id="btnTriggerHtmlPlugin" class="submenu-item">
+              Embed HTML Content
+            </button>
+          </div>
+        </div>
+
+        <!-- Emoji Picker Panel -->
+        <div
+          id="emojiPickerPanel"
+          class="emoji-picker-container"
+          style="display: none"
+        >
+          <div class="picker-search-header">
+            <input
+              type="text"
+              id="emojiSearchField"
+              placeholder="Filter keywords (smile, heart, thumbs)..."
+            />
+            <button id="closeEmojiPanelBtn" class="clear-search-x">
+              &times;
+            </button>
+          </div>
+          <div id="emojiGridScrollArea" class="emoji-grid-cells"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         HTML EMBED PLUGIN MODAL
+         ================================================================ -->
+    <div id="htmlPluginModal" class="modal-overlay" style="display: none">
+      <div class="modal-box HTML-box">
+        <span id="closeHtmlModal" class="close-btn">&times;</span>
+        <h3>Embed Custom Sandbox HTML Code</h3>
+        <textarea
+          id="htmlPluginCodeArea"
+          placeholder="Paste layout structure elements or style blocks here..."
+          rows="8"
+          style="
+            width: 100%;
+            background: #121212;
+            color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+          "
+        ></textarea>
+        <div
+          style="
+            text-align: right;
+            gap: 10px;
+            display: flex;
+            justify-content: flex-end;
+          "
+        >
+          <button id="cancelHtmlModal" class="secondary-btn-style">
+            Cancel
+          </button>
+          <button id="saveHtmlModal" class="submit-btn" style="margin: 0">
+            Attach Element
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden file inputs -->
+    <input
+      type="file"
+      id="hiddenImageInput"
+      accept="image/*"
+      style="display: none"
+    />
+    <input
+      type="file"
+      id="hiddenVideoInput"
+      accept="video/*"
+      style="display: none"
+    />
+    <input type="file" id="hiddenFileInput" style="display: none" />
+
+    <!-- ================================================================
+         AUTH MODAL
+         ================================================================ -->
+    <div id="authModal" class="modal-overlay" style="display: none">
+      <div class="modal-box">
+        <span id="closeModal" class="close-btn">&times;</span>
+        <h2 id="modalTitle">Log In</h2>
+        <form id="authForm">
+          <div class="input-group">
+            <label for="email">Email</label>
+            <input
+              type="email"
+              id="email"
+              required
+              placeholder="Enter school email"
+            />
+          </div>
+          <div class="input-group">
+            <label for="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              required
+              placeholder="Enter password"
+            />
+          </div>
+          <button type="submit" id="authSubmitBtn" class="submit-btn">
+            Log In
+          </button>
+        </form>
+        <p class="toggle-text">
+          <span id="toggleMsg">Don't have an account?</span>
+          <a href="#" id="toggleAuthMode">Sign Up</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         GROUP REQUEST MODAL
+         ================================================================ -->
+    <div id="groupModal" class="modal-overlay" style="display: none">
+      <div class="modal-box">
+        <span id="closeGroupModal" class="close-btn">&times;</span>
+        <h2>Create a Group!</h2>
+        <form id="groupForm">
+          <div class="input-group">
+            <label>Group Name</label>
+            <input
+              type="text"
+              id="groupName"
+              required
+              placeholder="e.g. Art Club"
+            />
+          </div>
+          <div class="input-group">
+            <label>Group Icon</label>
+            <div id="groupIconDropZone" class="image-drop-zone">
+              <img
+                id="groupIconPreview"
+                style="
+                  display: none;
+                  width: 64px;
+                  height: 64px;
+                  object-fit: cover;
+                  border-radius: 50%;
+                  margin-bottom: 8px;
+                "
+              />
+              <svg
+                width="28"
+                height="28"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="drop-zone-icon"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+              <span class="drop-zone-label"
+                >Drop image · paste · or click to browse</span
+              >
+              <span class="drop-zone-sub">Max 300 KB · JPG, PNG, GIF</span>
+            </div>
+            <input
+              type="file"
+              id="groupIconInput"
+              accept="image/*"
+              style="display: none"
+            />
+          </div>
+          <div class="input-group">
+            <label
+              >Banner Image URL
+              <span style="font-size: 11px; opacity: 0.5"
+                >(optional)</span
+              ></label
+            >
+            <input
+              type="url"
+              id="groupBanner"
+              placeholder="https://example.com/banner.jpg"
+            />
+          </div>
+          <div class="input-group">
+            <label>Privacy</label>
+            <select id="groupAccessibility">
+              <option value="public">Public (Anyone can view and join)</option>
+              <option value="private">Private (Approval Required)</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label>Description</label>
+            <textarea
+              id="groupDesc"
+              required
+              rows="3"
+              placeholder="Describe the group..."
+            ></textarea>
+          </div>
+          <button type="submit" class="submit-btn">Submit Request</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Profile modal handled by shared.js -->
+    <!-- ================================================================
+         FOOTER
+         ================================================================ -->
+    <footer>
+      <p>&copy; 2026 ShareNet Hub. Connecting creators, sharing visions.</p>
+    </footer>
+
+    <script type="module" src="groups.js"></script>
+    <script type="module" src="shared.js"></script>
+  </body>
+</html>
