@@ -23,7 +23,8 @@ import {
   orderBy,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
-  PERMISSION_DEFS,
+  GRANT_PERMISSION_DEFS,
+  RESTRICTION_PERMISSION_DEFS,
   computePermissions,
   getRolesCache,
   onRolesUpdated,
@@ -327,12 +328,18 @@ function renderRoleManagerList() {
 
   roleManagerList.innerHTML = roles
     .map((r) => {
-      const permCount = Object.values(r.permissions || {}).filter(Boolean).length;
+      const rp = r.permissions || {};
+      const grantCount = GRANT_PERMISSION_DEFS.filter((p) => rp[p.key]).length;
+      const restrictCount = RESTRICTION_PERMISSION_DEFS.filter((p) => rp[p.key] === false).length;
+      const summaryParts = [];
+      if (grantCount > 0) summaryParts.push(`${grantCount} extra permission${grantCount !== 1 ? "s" : ""}`);
+      if (restrictCount > 0) summaryParts.push(`${restrictCount} restriction${restrictCount !== 1 ? "s" : ""}`);
+      const summary = summaryParts.length ? summaryParts.join(" · ") : "No changes from default";
       return `
       <div class="badge-manager-row role-manager-row" data-role-row="${r.id}">
         <span class="role-pill" style="background: var(--accent-purple);">${r.name}</span>
         <div class="badge-manager-row-info">
-          <span class="badge-manager-row-meta">${permCount} permission${permCount !== 1 ? "s" : ""}</span>
+          <span class="badge-manager-row-meta">${summary}</span>
         </div>
         ${
           perms.makeRoles
@@ -385,12 +392,14 @@ async function deleteRoleEverywhere(roleId) {
   }
 }
 
-// Build the permission checkbox grid once
+// Build the permission checkbox grid once — two sections: extra
+// abilities a role can *grant* (default unchecked), and baseline member
+// abilities a role can *restrict* (default checked).
 if (rolePermissionsGrid) {
-  rolePermissionsGrid.innerHTML = PERMISSION_DEFS.map(
+  const grantChecks = GRANT_PERMISSION_DEFS.map(
     (p) => `
       <label class="role-permission-check">
-        <input type="checkbox" data-perm-key="${p.key}" />
+        <input type="checkbox" data-perm-key="${p.key}" data-perm-type="grant" />
         <span class="role-permission-check-text">
           <strong>${p.label}</strong>
           <small>${p.hint}</small>
@@ -398,6 +407,29 @@ if (rolePermissionsGrid) {
       </label>
     `
   ).join("");
+
+  const restrictionChecks = RESTRICTION_PERMISSION_DEFS.map(
+    (p) => `
+      <label class="role-permission-check role-permission-check-restriction">
+        <input type="checkbox" data-perm-key="${p.key}" data-perm-type="restriction" checked />
+        <span class="role-permission-check-text">
+          <strong>${p.label}</strong>
+          <small>${p.hint}</small>
+        </span>
+      </label>
+    `
+  ).join("");
+
+  rolePermissionsGrid.innerHTML = `
+    <p class="role-permission-section-label">
+      Extra abilities — off by default, this role grants them
+    </p>
+    ${grantChecks}
+    <p class="role-permission-section-label role-permission-section-label-restrict">
+      Member restrictions — on by default, uncheck to take away
+    </p>
+    ${restrictionChecks}
+  `;
 }
 
 if (openCreateRoleBtn) {
@@ -419,7 +451,16 @@ function openRoleEditor(roleId) {
 
   const rolePerms = (role && role.permissions) || {};
   rolePermissionsGrid.querySelectorAll("input[data-perm-key]").forEach((cb) => {
-    cb.checked = !!rolePerms[cb.getAttribute("data-perm-key")];
+    const key = cb.getAttribute("data-perm-key");
+    const type = cb.getAttribute("data-perm-type");
+    if (type === "restriction") {
+      // Default true (not restricted) unless the saved role explicitly
+      // set it to false, or unless we're creating a brand new role.
+      cb.checked = role ? rolePerms[key] !== false : true;
+    } else {
+      // Grants default false (off) unless explicitly true.
+      cb.checked = role ? !!rolePerms[key] : false;
+    }
   });
 
   deleteRoleBtn.style.display =
@@ -1012,7 +1053,9 @@ function openMemberActionsModal(targetUid, userData) {
   }
 
   // ── Account ──
-  const canRemove = isMe || (myPerms.removeAccounts && !targetPerms.isOwner);
+  const canRemove =
+    (isMe && myPerms.canDeleteOwnAccount) ||
+    (myPerms.removeAccounts && !targetPerms.isOwner);
   if (canRemove) {
     sections.push(`
       <div class="member-actions-section">
@@ -1139,7 +1182,7 @@ function renderMembersDirectory() {
 
       const isMe = auth.currentUser && auth.currentUser.uid === userDocId;
       const canManageCard =
-        isMe ||
+        (isMe && myPerms.canDeleteOwnAccount) ||
         (myPerms.assignRoles && !targetPerms.isOwner) ||
         myPerms.assignBadges ||
         (myPerms.removeAccounts && !targetPerms.isOwner);
@@ -1168,7 +1211,9 @@ function renderMembersDirectory() {
           : "";
 
       const badgeIds = userData.badgeIds || [];
-      const badgeRowHTML = renderUserBadgeRow(badgeIds, `card-${userDocId}`);
+      const badgeRowHTML = targetPerms.permissions.canDisplayBadges
+        ? renderUserBadgeRow(badgeIds, `card-${userDocId}`)
+        : "";
 
       const cardHTML = `
         <div class="member-card">
