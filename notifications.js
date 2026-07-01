@@ -176,8 +176,19 @@ function initializeLiveNotificationsEngine() {
     snapshot.forEach((itemDoc) => {
       const entry = itemDoc.data();
 
-      // SHIELD: Skip notification processing if you are the one who did the action
+      // SHIELD: Skip if you created this notification
       if (auth.currentUser && entry.createdBy === auth.currentUser.uid) {
+        return;
+      }
+
+      // ITEM 6 — Don't show post/comment notifications for groups the
+      // current user isn't a member of (groupMembers null = global/no group = show to all)
+      if (
+        entry.groupMembers !== null &&
+        entry.groupMembers !== undefined &&
+        Array.isArray(entry.groupMembers) &&
+        !entry.groupMembers.includes(auth.currentUser.uid)
+      ) {
         return;
       }
 
@@ -185,7 +196,6 @@ function initializeLiveNotificationsEngine() {
 
       if (!viewedArray.includes(auth.currentUser.uid)) {
         unreadCount++;
-
         const docRef = doc(db, "notifications", itemDoc.id);
         updateDoc(docRef, {
           viewedBy: arrayUnion(auth.currentUser.uid),
@@ -193,7 +203,6 @@ function initializeLiveNotificationsEngine() {
           console.error("Failed updating badge read array state: ", err)
         );
       }
-      // ... rest of your notification card creation logic remains the same
 
       if (notificationsContainer) {
         let timeFormatted = "Just now";
@@ -204,7 +213,6 @@ function initializeLiveNotificationsEngine() {
           });
         }
 
-        // Determine card type class for CSS-variable-based theming
         let notifTypeClass = "notif-default";
         if (entry.type && entry.type.includes("deletion")) {
           notifTypeClass = "notif-deletion";
@@ -212,12 +220,34 @@ function initializeLiveNotificationsEngine() {
           notifTypeClass = "notif-creation";
         }
 
-        const notificationCard = document.createElement("div");
-        notificationCard.className = `update-card notif-card ${notifTypeClass}`;
+        // Build a link to the source if we have enough info
+        let sourceHref = null;
+        if (entry.postId && entry.groupId) {
+          sourceHref = `groups.html?group=${entry.groupId}&post=${entry.postId}`;
+        } else if (entry.postId) {
+          sourceHref = `groups.html?post=${entry.postId}`;
+        } else if (entry.groupId) {
+          sourceHref = `groups.html?group=${entry.groupId}`;
+        }
+
+        // Preview snippet
+        const previewHtml = entry.preview
+          ? `<p class="notif-preview">"${entry.preview}${entry.preview.length >= 120 ? "…" : ""}"</p>`
+          : "";
+
+        const notificationCard = document.createElement(sourceHref ? "a" : "div");
+        notificationCard.className = `update-card notif-card ${notifTypeClass}${sourceHref ? " notif-card-link" : ""}`;
+        if (sourceHref) {
+          notificationCard.href = sourceHref;
+          notificationCard.style.textDecoration = "none";
+          notificationCard.style.display = "block";
+          notificationCard.style.color = "inherit";
+        }
 
         notificationCard.innerHTML = `
           <h4 class="notif-title">${entry.title || "System Notification"}</h4>
           <p class="notif-message">${entry.message || ""}</p>
+          ${previewHtml}
           <small class="notif-time">${timeFormatted}</small>
         `;
         notificationsContainer.appendChild(notificationCard);
