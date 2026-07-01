@@ -4138,6 +4138,24 @@ html.theme-light .notif-preview {
   border-color: var(--accent-purple);
 }
 
+.role-permission-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 4px 0 2px;
+}
+
+.role-permission-section-label-restrict {
+  margin-top: 14px;
+  color: var(--accent-danger);
+}
+
+.role-permission-check-restriction {
+  border-left: 3px solid var(--accent-danger);
+}
+
 .role-permission-check input[type="checkbox"] {
   width: 18px;
   height: 18px;
