@@ -56,7 +56,7 @@ function injectSharedHtml() {
             </div>
             <div class="input-group">
               <label>Display Name</label>
-              <input type="text" id="sharedProfileDisplayNameInput" placeholder="Your display name" />
+              <input type="text" id="sharedProfileDisplayNameInput" placeholder="Your display name" maxlength="40" />
             </div>
             <div class="input-group">
               <label>Email (read-only)</label>
@@ -223,6 +223,10 @@ function bindProfileModal() {
         ?.value.trim();
       if (!newName) {
         alert("Display name cannot be empty.");
+        return;
+      }
+      if (newName.length > 40) {
+        alert("Display name must be 40 characters or less.");
         return;
       }
       currentUserProfile.displayName = newName;
