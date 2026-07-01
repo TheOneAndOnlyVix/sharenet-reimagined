@@ -22,6 +22,13 @@ import {
   query,
   orderBy,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import {
+  PERMISSION_DEFS,
+  computePermissions,
+  getRolesCache,
+  onRolesUpdated,
+  waitForRoles,
+} from "./permissions.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDFKAnb3hipbmCFOujKIpdh3jbp18RFGlE",
@@ -36,8 +43,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const SITE_ADMIN_EMAIL = "ogheneovieumebese@gmail.com";
-let currentGlobalRole = "member"; // Track current user's DB role
+let currentGlobalRole = "member"; // Legacy field, kept for back-compat
+let currentUserData = null; // Full users/{uid} doc for the signed-in user
+let currentPermissions = computePermissions(null, null); // Live permission set
 
 // DOM Elements
 const authModal = document.getElementById("authModal");
@@ -55,15 +63,34 @@ const navNotificationsLink = document.getElementById("navNotificationsLink");
 const notificationBadge = document.getElementById("notificationBadge");
 const navProfileAvatar = document.getElementById("navProfileAvatar");
 
-// Admin Panel Elements
+// Management panel elements
 const membersAdminPanel = document.getElementById("membersAdminPanel");
-const userSelectDropdown = document.getElementById("userSelectDropdown");
-const promoteToAdminBtn = document.getElementById("promoteToAdminBtn");
-const demoteToMemberBtn = document.getElementById("demoteToMemberBtn");
+const manageRolesBtn = document.getElementById("manageRolesBtn");
+const manageBadgesBtn = document.getElementById("manageBadgesBtn");
+
+// Role Manager elements
+const roleManagerModal = document.getElementById("roleManagerModal");
+const closeRoleManagerModal = document.getElementById("closeRoleManagerModal");
+const roleManagerList = document.getElementById("roleManagerList");
+const openCreateRoleBtn = document.getElementById("openCreateRoleBtn");
+
+// Create/Edit Role elements
+const createRoleModal = document.getElementById("createRoleModal");
+const closeCreateRoleModal = document.getElementById("closeCreateRoleModal");
+const createRoleModalTitle = document.getElementById("createRoleModalTitle");
+const roleNameInput = document.getElementById("roleNameInput");
+const rolePermissionsGrid = document.getElementById("rolePermissionsGrid");
+const deleteRoleBtn = document.getElementById("deleteRoleBtn");
+const submitRoleBtn = document.getElementById("submitRoleBtn");
+
+// Member Actions popup elements
+const memberActionsModal = document.getElementById("memberActionsModal");
+const closeMemberActionsModal = document.getElementById("closeMemberActionsModal");
+const memberActionsTitle = document.getElementById("memberActionsTitle");
+const memberActionsSubtitle = document.getElementById("memberActionsSubtitle");
+const memberActionsBody = document.getElementById("memberActionsBody");
 
 // Badge System Elements
-const awardBadgeBtn = document.getElementById("awardBadgeBtn");
-const manageBadgesBtn = document.getElementById("manageBadgesBtn");
 const badgeManagerModal = document.getElementById("badgeManagerModal");
 const closeBadgeManagerModal = document.getElementById("closeBadgeManagerModal");
 const badgeManagerList = document.getElementById("badgeManagerList");
@@ -107,6 +134,9 @@ let currentBadgesMap = {};
 let selectedIconType = "symbol"; // "symbol" | "image"
 let selectedIconValue = "military_tech"; // symbol name OR base64 image data
 let isCreatingBadge = false;
+
+// Role editor state
+let editingRoleId = null; // null = creating a new role
 
 let isLoginMode = true;
 
@@ -175,7 +205,8 @@ if (authForm) {
         .then((cred) => {
           setDoc(doc(db, "users", cred.user.uid), {
             email: cred.user.email,
-            role: "member", // Default role
+            role: "member", // Default legacy role
+            roleId: null,
             createdAt: new Date(),
           }).then(() => {
             authModal.style.display = "none";
@@ -199,50 +230,257 @@ onAuthStateChanged(auth, async (user) => {
       navProfileAvatar.style.display = "flex";
     }
 
-    // Fetch user role from DB
+    // Fetch full user doc so we can compute the live permission set
     try {
       const userDoc = await getDoc(doc(db, "users", user.uid));
-      if (userDoc.exists()) {
-        currentGlobalRole = userDoc.data().role || "member";
-      }
+      currentUserData = userDoc.exists() ? userDoc.data() : null;
+      currentGlobalRole = (currentUserData && currentUserData.role) || "member";
     } catch (e) {
       console.error("Failed fetching user role:", e);
+      currentUserData = null;
     }
 
-    // Evaluate Admin Panel Visibility
-    if (user.email === SITE_ADMIN_EMAIL || currentGlobalRole === "admin") {
-      if (membersAdminPanel) membersAdminPanel.style.display = "block";
-    } else {
-      if (membersAdminPanel) membersAdminPanel.style.display = "none";
-    }
+    await waitForRoles();
+    refreshCurrentPermissions(user);
   } else {
     authNavBtn.innerText = "Log In";
     if (navProfileAvatar) navProfileAvatar.style.display = "none";
-    if (membersAdminPanel) membersAdminPanel.style.display = "none";
     currentGlobalRole = "member";
+    currentUserData = null;
+    refreshCurrentPermissions(null);
   }
   renderMembersDirectory();
   syncNavNotificationBadgeOnly();
 });
 
-// Admin Controls Logic
-if (promoteToAdminBtn) {
-  promoteToAdminBtn.addEventListener("click", () => {
-    const targetUid = userSelectDropdown.value;
-    if (!targetUid) return alert("Select a user first.");
-    updateDoc(doc(db, "users", targetUid), { role: "admin" })
-      .then(() => alert("User successfully promoted to Admin!"))
-      .catch((err) => alert("Error: " + err.message));
+// Recompute the signed-in user's permission set and sync panel visibility.
+// Re-run whenever auth changes AND whenever the live roles cache updates
+// (in case an admin edits/deletes the role currently assigned to us).
+function refreshCurrentPermissions(user) {
+  currentPermissions = computePermissions(user, currentUserData);
+  const perms = currentPermissions.permissions;
+
+  const showRolesBtn = perms.makeRoles || perms.deleteRoles;
+  const showBadgesBtn = perms.makeBadges || perms.deleteBadges;
+
+  if (manageRolesBtn) manageRolesBtn.style.display = showRolesBtn ? "inline-block" : "none";
+  if (manageBadgesBtn) manageBadgesBtn.style.display = showBadgesBtn ? "inline-block" : "none";
+  if (membersAdminPanel) {
+    membersAdminPanel.style.display = showRolesBtn || showBadgesBtn ? "block" : "none";
+  }
+  if (openCreateRoleBtn) {
+    openCreateRoleBtn.style.display = perms.makeRoles ? "inline-block" : "none";
+  }
+}
+
+onRolesUpdated(() => {
+  refreshCurrentPermissions(auth.currentUser);
+  renderMembersDirectory();
+  if (roleManagerModal && roleManagerModal.style.display === "flex") {
+    renderRoleManagerList();
+  }
+});
+
+function isCurrentUserAdmin() {
+  return currentPermissions.isOwner || currentPermissions.isLegacyAdmin;
+}
+
+// =============================================================================
+//  ROLE SYSTEM
+//  Data model:
+//    roles/{roleId}     → { name, permissions: {key: bool, ...}, createdAt }
+//    users/{uid}.roleId → id of the role assigned to that user (or null)
+// =============================================================================
+
+if (manageRolesBtn) {
+  manageRolesBtn.addEventListener("click", () => {
+    renderRoleManagerList();
+    roleManagerModal.style.display = "flex";
+  });
+}
+if (closeRoleManagerModal) {
+  closeRoleManagerModal.addEventListener("click", () => {
+    roleManagerModal.style.display = "none";
   });
 }
 
-if (demoteToMemberBtn) {
-  demoteToMemberBtn.addEventListener("click", () => {
-    const targetUid = userSelectDropdown.value;
-    if (!targetUid) return alert("Select a user first.");
-    updateDoc(doc(db, "users", targetUid), { role: "member" })
-      .then(() => alert("User demoted to Member."))
-      .catch((err) => alert("Error: " + err.message));
+function countUsersWithRole(roleId, callback) {
+  getDocs(collection(db, "users")).then((snap) => {
+    let count = 0;
+    snap.forEach((d) => {
+      if (d.data().roleId === roleId) count++;
+    });
+    callback(count);
+  });
+}
+
+function renderRoleManagerList() {
+  if (!roleManagerList) return;
+  const roles = Object.values(getRolesCache());
+
+  if (roles.length === 0) {
+    roleManagerList.innerHTML = `<p class="loading-text">No custom roles created yet.</p>`;
+    return;
+  }
+
+  const perms = currentPermissions.permissions;
+
+  roleManagerList.innerHTML = roles
+    .map((r) => {
+      const permCount = Object.values(r.permissions || {}).filter(Boolean).length;
+      return `
+      <div class="badge-manager-row role-manager-row" data-role-row="${r.id}">
+        <span class="role-pill" style="background: var(--accent-purple);">${r.name}</span>
+        <div class="badge-manager-row-info">
+          <span class="badge-manager-row-meta">${permCount} permission${permCount !== 1 ? "s" : ""}</span>
+        </div>
+        ${
+          perms.makeRoles
+            ? `<button type="button" class="badge-manager-delete-btn" data-edit-role-id="${r.id}" title="Edit role">
+                 <span class="material-symbols-outlined" style="font-size:18px;">edit</span>
+               </button>`
+            : ""
+        }
+        ${
+          perms.deleteRoles
+            ? `<button type="button" class="badge-manager-delete-btn" data-delete-role-id="${r.id}" title="Delete role">
+                 <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
+               </button>`
+            : ""
+        }
+      </div>
+    `;
+    })
+    .join("");
+
+  roleManagerList.querySelectorAll("[data-edit-role-id]").forEach((btn) => {
+    btn.onclick = () => openRoleEditor(btn.getAttribute("data-edit-role-id"));
+  });
+  roleManagerList.querySelectorAll("[data-delete-role-id]").forEach((btn) => {
+    btn.onclick = () => {
+      const roleId = btn.getAttribute("data-delete-role-id");
+      const role = getRolesCache()[roleId];
+      if (!confirm(`Delete the "${role ? role.name : "role"}" role? Anyone currently assigned it will lose those permissions.`))
+        return;
+      deleteRoleEverywhere(roleId);
+    };
+  });
+}
+
+async function deleteRoleEverywhere(roleId) {
+  try {
+    const usersSnap = await getDocs(collection(db, "users"));
+    const removalPromises = [];
+    usersSnap.forEach((userDoc) => {
+      if (userDoc.data().roleId === roleId) {
+        removalPromises.push(
+          updateDoc(doc(db, "users", userDoc.id), { roleId: null })
+        );
+      }
+    });
+    await Promise.all(removalPromises);
+    await deleteDoc(doc(db, "roles", roleId));
+  } catch (err) {
+    alert("Error deleting role: " + err.message);
+  }
+}
+
+// Build the permission checkbox grid once
+if (rolePermissionsGrid) {
+  rolePermissionsGrid.innerHTML = PERMISSION_DEFS.map(
+    (p) => `
+      <label class="role-permission-check">
+        <input type="checkbox" data-perm-key="${p.key}" />
+        <span class="role-permission-check-text">
+          <strong>${p.label}</strong>
+          <small>${p.hint}</small>
+        </span>
+      </label>
+    `
+  ).join("");
+}
+
+if (openCreateRoleBtn) {
+  openCreateRoleBtn.addEventListener("click", () => openRoleEditor(null));
+}
+if (closeCreateRoleModal) {
+  closeCreateRoleModal.addEventListener("click", () => {
+    createRoleModal.style.display = "none";
+  });
+}
+
+function openRoleEditor(roleId) {
+  editingRoleId = roleId;
+  const role = roleId ? getRolesCache()[roleId] : null;
+
+  createRoleModalTitle.innerText = role ? "Edit Role" : "Create Role";
+  submitRoleBtn.innerText = role ? "Save Changes" : "Create Role";
+  roleNameInput.value = role ? role.name : "";
+
+  const rolePerms = (role && role.permissions) || {};
+  rolePermissionsGrid.querySelectorAll("input[data-perm-key]").forEach((cb) => {
+    cb.checked = !!rolePerms[cb.getAttribute("data-perm-key")];
+  });
+
+  deleteRoleBtn.style.display =
+    role && currentPermissions.permissions.deleteRoles ? "inline-block" : "none";
+
+  createRoleModal.style.display = "flex";
+}
+
+if (deleteRoleBtn) {
+  deleteRoleBtn.addEventListener("click", () => {
+    if (!editingRoleId) return;
+    const role = getRolesCache()[editingRoleId];
+    if (!confirm(`Delete the "${role ? role.name : "role"}" role? Anyone currently assigned it will lose those permissions.`))
+      return;
+    deleteRoleEverywhere(editingRoleId).then(() => {
+      createRoleModal.style.display = "none";
+    });
+  });
+}
+
+if (submitRoleBtn) {
+  submitRoleBtn.addEventListener("click", async () => {
+    const name = roleNameInput.value.trim();
+    if (!name) {
+      alert("Please enter a role name.");
+      return;
+    }
+
+    const permissions = {};
+    rolePermissionsGrid.querySelectorAll("input[data-perm-key]").forEach((cb) => {
+      permissions[cb.getAttribute("data-perm-key")] = cb.checked;
+    });
+
+    submitRoleBtn.disabled = true;
+    try {
+      if (editingRoleId) {
+        if (!currentPermissions.permissions.makeRoles) {
+          alert("You don't have permission to edit roles.");
+          return;
+        }
+        await updateDoc(doc(db, "roles", editingRoleId), { name, permissions });
+      } else {
+        if (!currentPermissions.permissions.makeRoles) {
+          alert("You don't have permission to create roles.");
+          return;
+        }
+        await addDoc(collection(db, "roles"), {
+          name,
+          permissions,
+          createdAt: new Date(),
+          createdBy: auth.currentUser ? auth.currentUser.uid : null,
+        });
+      }
+      createRoleModal.style.display = "none";
+      renderRoleManagerList();
+      roleManagerModal.style.display = "flex";
+    } catch (err) {
+      alert("Error saving role: " + err.message);
+    } finally {
+      submitRoleBtn.disabled = false;
+    }
   });
 }
 
@@ -253,14 +491,6 @@ if (demoteToMemberBtn) {
 //                               textColor, bgColor, createdAt }
 //    users/{uid}.badgeIds  → array of badge IDs awarded to that user
 // =============================================================================
-
-function isCurrentUserAdmin() {
-  return (
-    auth.currentUser &&
-    (auth.currentUser.email === SITE_ADMIN_EMAIL ||
-      currentGlobalRole === "admin")
-  );
-}
 
 // Renders the small icon markup for a single badge (used everywhere a
 // badge is displayed: pills, manager list, live preview, overflow popup)
@@ -369,7 +599,8 @@ onSnapshot(collection(db, "badges"), (snapshot) => {
 // ── Badge Manager modal open/close ──
 if (manageBadgesBtn) {
   manageBadgesBtn.addEventListener("click", () => {
-    if (!isCurrentUserAdmin()) return;
+    const perms = currentPermissions.permissions;
+    if (!perms.makeBadges && !perms.deleteBadges) return;
     renderBadgeManagerList();
     badgeManagerModal.style.display = "flex";
   });
@@ -383,6 +614,11 @@ if (closeBadgeManagerModal) {
 function renderBadgeManagerList() {
   if (!badgeManagerList) return;
   const badgeEntries = Object.values(currentBadgesMap);
+  const perms = currentPermissions.permissions;
+
+  if (openCreateBadgeBtn) {
+    openCreateBadgeBtn.style.display = perms.makeBadges ? "inline-block" : "none";
+  }
 
   if (badgeEntries.length === 0) {
     badgeManagerList.innerHTML = `<p class="loading-text">No badges created yet.</p>`;
@@ -397,9 +633,13 @@ function renderBadgeManagerList() {
         <div class="badge-manager-row-info">
           <span class="badge-manager-row-meta">${b.title}</span>
         </div>
-        <button type="button" class="badge-manager-delete-btn" data-delete-badge-id="${b.id}" title="Delete badge">
-          <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
-        </button>
+        ${
+          perms.deleteBadges
+            ? `<button type="button" class="badge-manager-delete-btn" data-delete-badge-id="${b.id}" title="Delete badge">
+                 <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
+               </button>`
+            : ""
+        }
       </div>
     `
     )
@@ -448,6 +688,7 @@ async function deleteBadgeEverywhere(badgeId) {
 // ── Create Badge modal ──
 if (openCreateBadgeBtn) {
   openCreateBadgeBtn.addEventListener("click", () => {
+    if (!currentPermissions.permissions.makeBadges) return;
     resetCreateBadgeForm();
     createBadgeModal.style.display = "flex";
   });
@@ -602,8 +843,8 @@ if (submitCreateBadgeBtn) {
       alert("Please enter a badge title.");
       return;
     }
-    if (!isCurrentUserAdmin()) {
-      alert("Only admins can create badges.");
+    if (!currentPermissions.permissions.makeBadges) {
+      alert("You don't have permission to create badges.");
       return;
     }
 
@@ -635,33 +876,20 @@ if (submitCreateBadgeBtn) {
   });
 }
 
-// ── Award Badge button — opens a modal picker for the currently
-//    selected user in the admin dropdown ──
-if (awardBadgeBtn) {
-  awardBadgeBtn.addEventListener("click", () => {
-    const targetUid = userSelectDropdown.value;
-    if (!targetUid) return alert("Select a user first.");
-
-    const badgeEntries = Object.values(currentBadgesMap);
-    if (badgeEntries.length === 0) {
-      alert("No badges exist yet. Create one first via Manage Badges.");
-      return;
-    }
-
-    openAwardBadgeModal(targetUid);
-  });
-}
-
-function openAwardBadgeModal(targetUid) {
+// ── Award Badge picker — opened from the member actions popup, targeting
+//    whichever user's "..." menu it was triggered from ──
+function openAwardBadgeModal(targetUid, targetLabel) {
   if (!awardBadgeModal || !awardBadgePickerList) return;
 
-  const targetLabel =
-    userSelectDropdown.options[userSelectDropdown.selectedIndex]?.text ||
-    "selected user";
+  const badgeEntries = Object.values(currentBadgesMap);
+  if (badgeEntries.length === 0) {
+    alert("No badges exist yet. Create one first via Manage Badges.");
+    return;
+  }
+
   if (awardBadgeTargetLabel)
     awardBadgeTargetLabel.innerText = `Awarding to: ${targetLabel}`;
 
-  const badgeEntries = Object.values(currentBadgesMap);
   awardBadgePickerList.innerHTML = badgeEntries
     .map(
       (b) => `
@@ -696,15 +924,177 @@ if (closeAwardBadgeModal) {
   });
 }
 
-// Render the Directory and populate Admin Dropdown
+// =============================================================================
+//  MEMBER ACTIONS POPUP — opened via the "..." button on a member card.
+//  Contents are built dynamically based on the signed-in user's permissions
+//  and the target member's current status.
+// =============================================================================
+
+if (closeMemberActionsModal) {
+  closeMemberActionsModal.addEventListener("click", () => {
+    memberActionsModal.style.display = "none";
+  });
+}
+
+function openMemberActionsModal(targetUid, userData) {
+  if (!memberActionsModal || !memberActionsBody) return;
+
+  const emailString = userData.email || "anonymous@school.edu";
+  const username = emailString.split("@")[0];
+  const displayLabel = userData.displayName || username;
+  const isMe = auth.currentUser && auth.currentUser.uid === targetUid;
+  const targetPerms = computePermissions({ email: emailString }, userData);
+  const myPerms = currentPermissions.permissions;
+
+  memberActionsTitle.innerText = displayLabel;
+  memberActionsSubtitle.innerText = `@${username}`;
+
+  const sections = [];
+
+  // ── Role assignment ──
+  if (myPerms.assignRoles && !targetPerms.isOwner) {
+    const roles = Object.values(getRolesCache());
+    const roleOptions = roles
+      .map(
+        (r) =>
+          `<option value="${r.id}" ${userData.roleId === r.id ? "selected" : ""}>${r.name}</option>`
+      )
+      .join("");
+    sections.push(`
+      <div class="member-actions-section">
+        <h4>Role</h4>
+        ${
+          roles.length === 0
+            ? `<p class="member-actions-empty">No custom roles exist yet.</p>`
+            : `
+          <div class="member-actions-row">
+            <select id="assignRoleSelect">
+              <option value="">No Role (Member)</option>
+              ${roleOptions}
+            </select>
+            <button id="saveAssignRoleBtn" class="action-btn" style="white-space:nowrap;">Save</button>
+          </div>
+        `
+        }
+      </div>
+    `);
+  }
+
+  // ── Badges ──
+  if (myPerms.assignBadges) {
+    const badgeIds = userData.badgeIds || [];
+    const currentBadgesHTML = badgeIds.length
+      ? badgeIds
+          .map((bId) => {
+            const b = currentBadgesMap[bId];
+            if (!b) return "";
+            return `
+              <div class="badge-overflow-item" style="justify-content:space-between;">
+                ${renderBadgePillMarkup(b)}
+                <button type="button" class="badge-manager-delete-btn" data-revoke-badge="${bId}" title="Revoke">
+                  <span class="material-symbols-outlined" style="font-size:16px;">close</span>
+                </button>
+              </div>
+            `;
+          })
+          .join("")
+      : `<p class="member-actions-empty">No badges awarded yet.</p>`;
+
+    sections.push(`
+      <div class="member-actions-section">
+        <h4>Badges</h4>
+        <div class="badge-overflow-list" style="margin-bottom:10px;">${currentBadgesHTML}</div>
+        <button id="openAwardBadgeFromPopupBtn" class="secondary-btn-style" style="width:100%;">
+          + Award a Badge
+        </button>
+      </div>
+    `);
+  }
+
+  // ── Account ──
+  const canRemove = isMe || (myPerms.removeAccounts && !targetPerms.isOwner);
+  if (canRemove) {
+    sections.push(`
+      <div class="member-actions-section">
+        <h4>Account</h4>
+        <button id="removeAccountFromPopupBtn" class="delete-btn" style="margin-top:0;">
+          ${isMe ? "Remove My Account" : "Remove Account"}
+        </button>
+      </div>
+    `);
+  }
+
+  memberActionsBody.innerHTML = sections.length
+    ? sections.join("")
+    : `<p class="member-actions-empty">No actions available for this member.</p>`;
+
+  // Wire section handlers
+  const saveRoleBtn = document.getElementById("saveAssignRoleBtn");
+  if (saveRoleBtn) {
+    saveRoleBtn.onclick = () => {
+      const select = document.getElementById("assignRoleSelect");
+      const newRoleId = select.value || null;
+      updateDoc(doc(db, "users", targetUid), { roleId: newRoleId })
+        .then(() => {
+          memberActionsModal.style.display = "none";
+          alert(newRoleId ? "Role assigned!" : "Role cleared — member has no custom role now.");
+        })
+        .catch((err) => alert("Error: " + err.message));
+    };
+  }
+
+  memberActionsBody.querySelectorAll("[data-revoke-badge]").forEach((btn) => {
+    btn.onclick = () => {
+      const bId = btn.getAttribute("data-revoke-badge");
+      if (!confirm("Revoke this badge from this user?")) return;
+      updateDoc(doc(db, "users", targetUid), {
+        badgeIds: arrayRemove(bId),
+      })
+        .then(() => openMemberActionsModal(targetUid, { ...userData, badgeIds: (userData.badgeIds || []).filter((x) => x !== bId) }))
+        .catch((err) => alert("Error: " + err.message));
+    };
+  });
+
+  const awardBtn = document.getElementById("openAwardBadgeFromPopupBtn");
+  if (awardBtn) {
+    awardBtn.onclick = () => openAwardBadgeModal(targetUid, displayLabel);
+  }
+
+  const removeBtn = document.getElementById("removeAccountFromPopupBtn");
+  if (removeBtn) {
+    removeBtn.onclick = () => {
+      if (
+        !confirm(`Are you sure you want to remove the profile record for ${username}?`)
+      )
+        return;
+      addDoc(collection(db, "notifications"), {
+        title: "Account Deletion",
+        message: `The user account for "${username}" was removed from the system registry.`,
+        type: "account_deletion",
+        createdBy: auth.currentUser.uid,
+        createdAt: new Date(),
+        viewedBy: [],
+      }).then(() => {
+        deleteDoc(doc(db, "users", targetUid)).then(() => {
+          memberActionsModal.style.display = "none";
+          if (isMe) signOut(auth);
+        });
+      });
+    };
+  }
+
+  memberActionsModal.style.display = "flex";
+}
+
+// Render the Directory
 let unsubscribeMembersDirectory = null;
 
 function renderMembersDirectory() {
   if (!membersGrid) return;
 
   // Detach any previous listener before creating a new one — this function
-  // is now called both on auth changes AND on every badge catalog update,
-  // so without this, listeners would stack up indefinitely.
+  // is now called both on auth changes AND on every badge/role catalog
+  // update, so without this, listeners would stack up indefinitely.
   if (unsubscribeMembersDirectory) {
     unsubscribeMembersDirectory();
     unsubscribeMembersDirectory = null;
@@ -712,14 +1102,13 @@ function renderMembersDirectory() {
 
   unsubscribeMembersDirectory = onSnapshot(collection(db, "users"), (snapshot) => {
     membersGrid.innerHTML = "";
-    if (userSelectDropdown)
-      userSelectDropdown.innerHTML =
-        '<option value="">Select a user...</option>';
 
     if (snapshot.empty) {
       membersGrid.innerHTML = `<p class="loading-text">No registered community members found.</p>`;
       return;
     }
+
+    const myPerms = currentPermissions.permissions;
 
     snapshot.forEach((userDoc) => {
       const userData = userDoc.data();
@@ -729,30 +1118,37 @@ function renderMembersDirectory() {
       const displayName = userData.displayName || ""; // Set only if the user chose one
       const photoUrl = userData.photoUrl || "";
       const initial = (displayName || username).charAt(0).toUpperCase();
-      const userRole = userData.role === "admin" ? "Admin" : "Member";
 
-      // Populate Admin Dropdown
-      if (userSelectDropdown && emailString !== SITE_ADMIN_EMAIL) {
-        userSelectDropdown.innerHTML += `<option value="${userDocId}">${
-          displayName || username
-        } (${userRole})</option>`;
+      const targetPerms = computePermissions({ email: emailString }, userData);
+      let roleLabel = "Member";
+      let roleBadgeStyle =
+        'style="color: #94a3b8; font-size: 13px;"';
+      if (targetPerms.isOwner) {
+        roleLabel = "Owner";
+        roleBadgeStyle =
+          'style="color: #bb86fc; background: rgba(187, 134, 252, 0.1); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase;"';
+      } else if (targetPerms.isLegacyAdmin) {
+        roleLabel = "Admin";
+        roleBadgeStyle =
+          'style="color: #bb86fc; background: rgba(187, 134, 252, 0.1); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase;"';
+      } else if (targetPerms.roleName) {
+        roleLabel = targetPerms.roleName;
+        roleBadgeStyle =
+          'style="color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase;"';
       }
 
       const isMe = auth.currentUser && auth.currentUser.uid === userDocId;
-      const isAdmin =
-        auth.currentUser &&
-        (auth.currentUser.email === SITE_ADMIN_EMAIL ||
-          currentGlobalRole === "admin");
+      const canManageCard =
+        isMe ||
+        (myPerms.assignRoles && !targetPerms.isOwner) ||
+        myPerms.assignBadges ||
+        (myPerms.removeAccounts && !targetPerms.isOwner);
 
-      const deleteActionHTML =
-        isMe || isAdmin
-          ? `<button class="delete-btn" id="del-user-${userDocId}">Remove Account</button>`
-          : "";
-
-      const roleBadgeStyle =
-        userRole === "Admin"
-          ? 'style="color: #bb86fc; background: rgba(187, 134, 252, 0.1); padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase;"'
-          : 'style="color: #94a3b8; font-size: 13px;"';
+      const cardMenuHTML = canManageCard
+        ? `<button type="button" class="member-card-menu-btn" id="menu-btn-${userDocId}" title="Manage member">
+             <span class="material-symbols-outlined">more_vert</span>
+           </button>`
+        : "";
 
       // Avatar: photo if available, otherwise initial letter — wrapped in a
       // link so clicking navigates to that member's profile page.
@@ -774,86 +1170,29 @@ function renderMembersDirectory() {
       const badgeIds = userData.badgeIds || [];
       const badgeRowHTML = renderUserBadgeRow(badgeIds, `card-${userDocId}`);
 
-      // Admin-only inline revoke control, listing currently held badges
-      const revokeControlsHTML =
-        isAdmin && badgeIds.length > 0
-          ? `<div class="badge-overflow-list" style="margin-top:10px; width:100%;">
-              ${badgeIds
-                .map((bId) => {
-                  const b = currentBadgesMap[bId];
-                  if (!b) return "";
-                  return `
-                    <div class="badge-overflow-item" style="justify-content:space-between;">
-                      ${renderBadgePillMarkup(b)}
-                      <button type="button" class="badge-manager-delete-btn" data-revoke-badge="${bId}" data-revoke-user="${userDocId}" title="Revoke">
-                        <span class="material-symbols-outlined" style="font-size:16px;">close</span>
-                      </button>
-                    </div>
-                  `;
-                })
-                .join("")}
-            </div>`
-          : "";
-
       const cardHTML = `
         <div class="member-card">
+          ${cardMenuHTML}
           ${avatarMarkup}
           <h3 class="member-name">@${username}</h3>
           ${displayNameRow}
           ${badgeRowHTML ? `<div class="member-card-badges">${badgeRowHTML}</div>` : ""}
-          <p ${roleBadgeStyle}>${userRole}</p>
-          ${revokeControlsHTML}
-          <div style="margin-top: auto; width: 100%; padding-top: 16px;">
-            ${deleteActionHTML}
-          </div>
+          <p ${roleBadgeStyle}>${roleLabel}</p>
         </div>
       `;
       membersGrid.innerHTML += cardHTML;
 
-      if (badgeIds.length > 0) {
+      if (canManageCard) {
         setTimeout(() => {
-          bindBadgeOverflowTriggers();
-          document.querySelectorAll("[data-revoke-badge]").forEach((btn) => {
-            btn.onclick = () => {
-              const bId = btn.getAttribute("data-revoke-badge");
-              const uId = btn.getAttribute("data-revoke-user");
-              if (!confirm("Revoke this badge from this user?")) return;
-              updateDoc(doc(db, "users", uId), {
-                badgeIds: arrayRemove(bId),
-              }).catch((err) => alert("Error: " + err.message));
-            };
-          });
-        }, 50);
-      }
-
-      if (isMe || isAdmin) {
-        setTimeout(() => {
-          const btn = document.getElementById(`del-user-${userDocId}`);
+          const btn = document.getElementById(`menu-btn-${userDocId}`);
           if (btn) {
-            btn.onclick = () => {
-              if (
-                confirm(
-                  `Are you sure you want to remove the profile record for ${username}?`
-                )
-              ) {
-                addDoc(collection(db, "notifications"), {
-                  title: "Account Deletion",
-                  message: `The user account for "${username}" was removed from the system registry.`,
-                  type: "account_deletion",
-                  createdBy: auth.currentUser.uid, // Global Filter Ignore Logic
-                  createdAt: new Date(),
-                  viewedBy: [],
-                }).then(() => {
-                  deleteDoc(doc(db, "users", userDocId)).then(() => {
-                    if (isMe) signOut(auth);
-                  });
-                });
-              }
-            };
+            btn.onclick = () => openMemberActionsModal(userDocId, userData);
           }
-        }, 50);
+        }, 0);
       }
     });
+
+    bindBadgeOverflowTriggers();
   });
 }
 
@@ -883,3 +1222,7 @@ function syncNavNotificationBadgeOnly() {
     }
   });
 }
+
+// Initial render for logged-out visitors (auth listener also renders,
+// but this ensures the grid isn't blank while Firebase auth resolves)
+renderMembersDirectory();
