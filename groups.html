@@ -450,6 +450,61 @@
     <!-- ================================================================
          AUTH MODAL
          ================================================================ -->
+    <!-- ================================================================
+         EDIT GROUP MODAL (owner / admin only)
+         ================================================================ -->
+    <div id="editGroupModal" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <span id="closeEditGroupModal" class="close-btn">&times;</span>
+        <h2>Edit Group</h2>
+        <div class="input-group">
+          <label>Group Name</label>
+          <input type="text" id="editGroupNameInput" placeholder="Group name" maxlength="60" />
+        </div>
+        <div class="input-group">
+          <label>Icon Image <span style="color:var(--text-muted);font-size:12px;">(optional, max 300 KB)</span></label>
+          <div style="display:flex;align-items:center;gap:14px;margin-top:6px;">
+            <div id="editGroupIconPreview" style="width:48px;height:48px;border-radius:8px;border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;overflow:hidden;"></div>
+            <label style="cursor:pointer;">
+              <span class="secondary-btn-style" style="padding:8px 16px;font-size:13px;">Choose Image</span>
+              <input type="file" id="editGroupIconFileInput" accept="image/*" hidden />
+            </label>
+          </div>
+        </div>
+        <button id="saveEditGroupBtn" class="submit-btn" style="margin-top:8px;">Save Changes</button>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         POLL CREATOR MODAL
+         ================================================================ -->
+    <div id="pollCreatorModal" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <span id="closePollCreatorModal" class="close-btn">&times;</span>
+        <h2>Create Poll</h2>
+        <div class="input-group">
+          <label>Question</label>
+          <input type="text" id="pollQuestionInput" placeholder="What do you want to ask?" maxlength="200" />
+        </div>
+        <div class="input-group">
+          <label>Poll Style</label>
+          <select id="pollTypeSelect">
+            <option value="simple">Simple (text options)</option>
+            <option value="grid">Grid (text options in a grid)</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label>Options</label>
+          <div id="pollOptionsContainer" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;"></div>
+          <button type="button" id="addPollOptionBtn" class="secondary-btn-style" style="padding:7px 14px;font-size:13px;width:100%;">+ Add Option</button>
+        </div>
+        <button id="confirmPollBtn" class="submit-btn">Attach Poll to Post</button>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         AUTH MODAL
+         ================================================================ -->
     <div id="authModal" class="modal-overlay" style="display: none">
       <div class="modal-box">
         <span id="closeModal" class="close-btn">&times;</span>
