@@ -37,6 +37,7 @@ import {
   arrayUnion,
   arrayRemove,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { computePermissions, waitForRoles, onRolesUpdated } from "./permissions.js";
 
 // ── Firebase (reuse existing app instance) ────────────────────────────────────
 const firebaseConfig = {
@@ -201,7 +202,13 @@ onSnapshot(collection(db, "badges"), (snapshot) => {
   const updated = {};
   snapshot.forEach((d) => { updated[d.id] = { id: d.id, ...d.data() }; });
   currentBadgesMap = updated;
-  if (profileData) renderProfileBadges(profileData.badgeIds || []);
+  if (profileData) {
+    const ownerPerms = computePermissions(
+      profileData.email ? { email: profileData.email } : null,
+      profileData
+    );
+    renderProfileBadges(ownerPerms.permissions.canDisplayBadges ? (profileData.badgeIds || []) : []);
+  }
 });
 
 // =============================================================================
@@ -215,6 +222,7 @@ async function loadProfile(uid) {
       return;
     }
     profileData = { id: snap.id, ...snap.data() };
+    await waitForRoles();
     renderProfile(profileData);
     loadGroupsOwned(uid);
   } catch (err) {
@@ -222,6 +230,17 @@ async function loadProfile(uid) {
     showNotFound();
   }
 }
+
+// Re-apply badge visibility if the profile owner's role gets edited while
+// this page is open (e.g. an admin toggles canDisplayBadges live).
+onRolesUpdated(() => {
+  if (!profileData) return;
+  const ownerPerms = computePermissions(
+    profileData.email ? { email: profileData.email } : null,
+    profileData
+  );
+  renderProfileBadges(ownerPerms.permissions.canDisplayBadges ? (profileData.badgeIds || []) : []);
+});
 
 function showNotFound() {
   if (profileLoadingState) profileLoadingState.style.display = "none";
@@ -294,8 +313,9 @@ function renderProfile(data) {
   // About section
   renderAbout(data.about || "");
 
-  // Badges
-  renderProfileBadges(data.badgeIds || []);
+  // Badges — respect this profile owner's own canDisplayBadges restriction
+  const ownerPerms = computePermissions(email ? { email } : null, data);
+  renderProfileBadges(ownerPerms.permissions.canDisplayBadges ? (data.badgeIds || []) : []);
 
   // Wire follow button and edit button now that we know who's viewing
   updateActionButtons();
