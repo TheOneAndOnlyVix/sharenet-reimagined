@@ -74,18 +74,6 @@ function injectSharedHtml() {
                 Off = ShareNet Pink &amp; Sky Blue theme
               </p>
             </div>
-            <div class="input-group" style="margin-top:14px;">
-              <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;">
-                <span>Subway Surfers Mode</span>
-                <label class="theme-toggle-switch">
-                  <input type="checkbox" id="sharedSubwayToggle" />
-                  <span class="theme-toggle-slider"></span>
-                </label>
-              </label>
-              <p style="font-size:11px;color:var(--text-secondary);margin-top:4px;">
-                Keeps your attention span engaged.
-              </p>
-            </div>
             <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
               <button id="sharedViewProfileBtn" class="secondary-btn-style" style="margin:0">View My Profile</button>
               <button id="sharedSaveProfileBtn" class="submit-btn" style="margin:0">Save Changes</button>
@@ -93,11 +81,7 @@ function injectSharedHtml() {
           </div>
         </div>
     
-        <div id="subwayWidget" style="display:none; position:fixed; bottom:28px; right:28px; width:220px; height:360px; border-radius:16px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,0.45); z-index:899; pointer-events:none;">
-      <iframe width="220" height="360" src="https://www.youtube.com/embed/vTfD20dbxho?autoplay=1&mute=1&controls=0&loop=1&playlist=vTfD20dbxho" frameborder="0" allow="autoplay; encrypted-media" style="position:absolute; top:-5%; left:-40%; width:180%; height:110%;"></iframe>
-    </div>
-
-    <button id="sharedChatbotToggleBtn" class="chatbot-fab" title="ShareNet Assistant">
+        <button id="sharedChatbotToggleBtn" class="chatbot-fab" title="ShareNet Assistant">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
@@ -249,11 +233,6 @@ function bindProfileModal() {
       applyTheme(isDark);
       localStorage.setItem("sharenet_dark_mode", isDark ? "1" : "0");
 
-      // Persist Subway Surfers preference
-      const subwayToggle = document.getElementById("sharedSubwayToggle");
-      const isSubwayOn = subwayToggle ? subwayToggle.checked : false;
-      applySubwaySurfers(isSubwayOn);
-      localStorage.setItem("sharenet_subway_mode", isSubwayOn ? "1" : "0");
       try {
         await updateDoc(doc(db, "users", auth.currentUser.uid), {
           displayName: newName,
@@ -279,15 +258,9 @@ function bindProfileModal() {
     const observer = new MutationObserver(() => {
       if (modal.style.display !== "none") {
         const darkToggle = document.getElementById("sharedDarkModeToggle");
-if (darkToggle) {
+        if (darkToggle) {
           const stored = localStorage.getItem("sharenet_dark_mode");
           darkToggle.checked = stored === null ? true : stored === "1";
-        }
-        const subwayToggle = document.getElementById("sharedSubwayToggle");
-        if (subwayToggle) {
-          const storedSub = localStorage.getItem("sharenet_subway_mode");
-          subwayToggle.checked = storedSub === "1";
-        }
         }
       }
     });
@@ -443,31 +416,10 @@ function applyTheme(isDark) {
   document.documentElement.classList.toggle("theme-light", !isDark);
 }
 
-function applySubwaySurfers(isOn) {
-  const widget = document.getElementById("subwayWidget");
-  const fab = document.getElementById("sharedChatbotToggleBtn");
-  const panel = document.getElementById("sharedChatbotPanel");
-  
-  if (widget) widget.style.display = isOn ? "block" : "none";
-  
-  if (fab && panel) {
-    if (isOn) {
-      fab.style.bottom = "410px";
-      panel.style.bottom = "474px";
-    } else {
-      fab.style.bottom = "28px";
-      panel.style.bottom = "92px";
-    }
-  }
-}
-
 function initTheme() {
   const stored = localStorage.getItem("sharenet_dark_mode");
   const isDark = stored === null ? true : stored === "1";
   applyTheme(isDark);
-  
-  const storedSub = localStorage.getItem("sharenet_subway_mode");
-  applySubwaySurfers(storedSub === "1");
 }
 
 // ── Auth state — load profile and wire up avatar ──────────────────────────────
