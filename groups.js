@@ -629,7 +629,8 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
       auth.currentUser && auth.currentUser.email === SITE_ADMIN_EMAIL;
     const trashBtnHTML =
       isOwner || isAdmin
-        ? `<span class="material-symbols-outlined delete-group-icon" id="del-group-${id}" style="font-size:18px; margin-left:auto; color:#cf6679; cursor:pointer;">delete</span>`
+        ? `<span class="material-symbols-outlined edit-group-icon" id="edit-group-${id}" style="font-size:16px; color:var(--accent-purple); cursor:pointer;" title="Edit group">edit</span>
+           <span class="material-symbols-outlined delete-group-icon" id="del-group-${id}" style="font-size:18px; margin-left:2px; color:#cf6679; cursor:pointer;">delete</span>`
         : "";
 
     const iconHtml = group.iconUrl
@@ -637,17 +638,31 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
       : group.accessibility === "private"
       ? `<svg class="group-sidebar-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`
       : `<svg class="group-sidebar-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+    const memberCount = (group.members || []).length;
+    const accessIcon = group.accessibility === "private"
+      ? `<span class="material-symbols-outlined group-access-icon">lock</span>`
+      : `<span class="material-symbols-outlined group-access-icon">public</span>`;
+
     const itemHTML = `
       <div class="group-item ${
         currentActiveGroupId === id ? "active" : ""
       }" id="target-grp-${id}" data-group-id="${id}">
         <span class="group-item-label">${iconHtml}${group.name}</span>
+        <span class="group-item-meta">${accessIcon}${memberCount} member${memberCount !== 1 ? "s" : ""}</span>
         ${trashBtnHTML}
       </div>`;
     groupsScrollList.innerHTML += itemHTML;
 
     if (isOwner || isAdmin) {
       setTimeout(() => {
+        const editBtn = document.getElementById(`edit-group-${id}`);
+        if (editBtn) {
+          editBtn.onclick = (e) => {
+            e.stopPropagation();
+            openEditGroupModal(id, group);
+          };
+        }
+
         const tBtn = document.getElementById(`del-group-${id}`);
         if (tBtn) {
           tBtn.onclick = (e) => {
@@ -681,9 +696,54 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
   });
 });
 
+// ── Edit Group Modal ───────────────────────────────────────────────────────────
+function openEditGroupModal(groupId, groupData) {
+  const modal = document.getElementById("editGroupModal");
+  const nameInput = document.getElementById("editGroupNameInput");
+  const iconPreview = document.getElementById("editGroupIconPreview");
+  const iconFileInput = document.getElementById("editGroupIconFileInput");
+  const saveBtn = document.getElementById("saveEditGroupBtn");
+  const closeBtn = document.getElementById("closeEditGroupModal");
+  if (!modal) return;
+
+  nameInput.value = groupData.name || "";
+  iconPreview.innerHTML = groupData.iconUrl
+    ? `<img src="${groupData.iconUrl}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;" />`
+    : `<span class="material-symbols-outlined" style="font-size:40px;color:var(--text-muted)">image</span>`;
+
+  let pendingIconBase64 = null;
+
+  iconFileInput.onchange = () => {
+    const file = iconFileInput.files[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    if (file.size > 300 * 1024) { alert("Icon image must be under 300 KB."); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      pendingIconBase64 = reader.result;
+      iconPreview.innerHTML = `<img src="${reader.result}" style="width:48px;height:48px;object-fit:cover;border-radius:8px;" />`;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  saveBtn.onclick = async () => {
+    const newName = nameInput.value.trim();
+    if (!newName) { alert("Group name can't be empty."); return; }
+    const updates = { name: newName };
+    if (pendingIconBase64) updates.iconUrl = pendingIconBase64;
+    try {
+      await updateDoc(doc(db, "groups", groupId), updates);
+      modal.style.display = "none";
+    } catch (err) { alert("Error saving: " + err.message); }
+  };
+
+  closeBtn.onclick = () => { modal.style.display = "none"; };
+  modal.style.display = "flex";
+}
+
 if (groupsScrollList) {
   groupsScrollList.addEventListener("click", (event) => {
     if (event.target.classList.contains("delete-group-icon")) return;
+    if (event.target.classList.contains("edit-group-icon")) return;
     const clickedItem = event.target.closest(".group-item");
     if (!clickedItem) return;
 
@@ -1084,7 +1144,21 @@ function filterAndRenderPosts(filterQuery) {
 
       let htmlTemplate = "";
       if (post.embeddedHtml) {
-        htmlTemplate = `<div class="post-custom-plugin-sandbox">${post.embeddedHtml}</div>`;
+        // Render embedded HTML in a sandboxed iframe so any <style> or
+        // global CSS inside the user's HTML cannot bleed into the page.
+        // allow-scripts is intentionally omitted to block JS execution.
+        const escapedHtml = post.embeddedHtml
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;");
+        htmlTemplate = `
+          <iframe
+            class="post-custom-plugin-sandbox"
+            srcdoc="${escapedHtml}"
+            sandbox="allow-same-origin allow-forms allow-popups"
+            loading="lazy"
+            style="width:100%;border:none;min-height:120px;border-radius:8px;background:#fff;"
+            onload="this.style.height=(this.contentDocument.body.scrollHeight+16)+'px'"
+          ></iframe>`;
       }
 
       const isAuthor =
@@ -1501,12 +1575,18 @@ async function dispatchNewComment(postId) {
     authorPhotoUrl: currentUserProfile.photoUrl || "",
     createdAt: new Date(),
   }).then(() => {
+    const currentPost = masterPostsCache.find((p) => p.id === postId);
     addDoc(collection(db, "notifications"), {
-      title: "New Comment Published",
-      message: `${commentAuthorName} commented: "${txt.substring(0, 60)}${
-        txt.length > 60 ? "..." : ""
-      }".`,
+      title: "New Comment",
+      message: `${commentAuthorName} commented on a post in "${currentPost?.groupName || "Main Feed"}".`,
+      preview: txt.substring(0, 120),
       type: "comment_creation",
+      postId: postId,
+      groupId: currentPost?.groupId || null,
+      groupName: currentPost?.groupName || null,
+      groupMembers: currentPost?.groupId
+        ? (currentGroupsDataMap[currentPost.groupId]?.members || [])
+        : null,
       createdBy: auth.currentUser.uid,
       createdAt: new Date(),
       viewedBy: [],
@@ -1562,6 +1642,8 @@ function shutdownComposerWindow() {
   stagingAttachmentName = "";
   stagingEmbeddedHtmlCode = "";
   stagingPollType = "";
+  window.stagingPollDataBlueprint = null;
+  if (toolBtnPoll) { toolBtnPoll.style.color = ""; toolBtnPoll.title = "Add Poll"; }
   composerAttachmentPreview.style.display = "none";
   if (attachmentLoadingOverlay) attachmentLoadingOverlay.style.display = "none";
   attachmentRenderArea.innerHTML = "";
@@ -1748,60 +1830,74 @@ if (removeAttachedHtml) {
   });
 }
 
-// Inline Poll Composition Plugin Trigger Bindings
+// Inline Poll Composition — opens a real modal instead of prompt() chain
 if (toolBtnPoll) {
   toolBtnPoll.addEventListener("click", () => {
-    const question = prompt("Write your question:");
-    if (!question) return;
-
-    const choiceType = prompt(
-      "Choose a poll format: ('simple', 'image', 'grid')"
-    )
-      .toLowerCase()
-      .trim();
-    if (!["simple", "image", "grid"].includes(choiceType)) {
-      alert("Invalid selection");
-      return;
-    }
-
-    const optionsCount = parseInt(
-      prompt("How many answer choices do you want?"),
-      10
-    );
-    if (isNaN(optionsCount) || optionsCount < 2) {
-      alert("Polls require a minimum of 2 options.");
-      return;
-    }
-
-    const optionsArray = [];
-    for (let i = 0; i < optionsCount; i++) {
-      const optionText = prompt(
-        `Enter statement label text for choice #${i + 1}:`
-      );
-      let imageUrl = "";
-      if (choiceType === "image" || choiceType === "grid") {
-        imageUrl = prompt(
-          `Paste graphic image visual absolute asset link URL for choice #${
-            i + 1
-          }:`
-        );
-      }
-      optionsArray.push({
-        id: `opt_${Date.now()}_${i}`,
-        text: optionText || `Option ${i + 1}`,
-        image: imageUrl,
-        voters: [],
-      });
-    }
-
-    stagingPollType = choiceType;
-    window.stagingPollDataBlueprint = {
-      question: question,
-      type: choiceType,
-      options: optionsArray,
-    };
-    alert("Poll created! (It will appear on publish)");
+    openPollCreatorModal();
   });
+}
+
+function openPollCreatorModal() {
+  const modal = document.getElementById("pollCreatorModal");
+  if (!modal) return;
+
+  // Reset form
+  document.getElementById("pollQuestionInput").value = "";
+  document.getElementById("pollOptionsContainer").innerHTML = "";
+  document.getElementById("pollTypeSelect").value = "simple";
+  addPollOptionRow(); addPollOptionRow(); // start with 2 empty options
+
+  modal.style.display = "flex";
+}
+
+function addPollOptionRow(value = "") {
+  const container = document.getElementById("pollOptionsContainer");
+  const idx = container.children.length + 1;
+  const row = document.createElement("div");
+  row.className = "poll-option-row";
+  row.innerHTML = `
+    <input type="text" class="poll-option-input" placeholder="Option ${idx}" value="${value}" maxlength="80" />
+    <button type="button" class="poll-option-remove-btn" title="Remove">
+      <span class="material-symbols-outlined" style="font-size:16px;">close</span>
+    </button>`;
+  row.querySelector(".poll-option-remove-btn").onclick = () => {
+    if (container.children.length > 2) row.remove();
+    else alert("Polls need at least 2 options.");
+  };
+  container.appendChild(row);
+}
+
+const pollCreatorModal = document.getElementById("pollCreatorModal");
+if (pollCreatorModal) {
+  document.getElementById("closePollCreatorModal").onclick = () => {
+    pollCreatorModal.style.display = "none";
+  };
+  document.getElementById("addPollOptionBtn").onclick = () => {
+    if (document.getElementById("pollOptionsContainer").children.length >= 10) {
+      alert("Maximum 10 options.");
+      return;
+    }
+    addPollOptionRow();
+  };
+  document.getElementById("confirmPollBtn").onclick = () => {
+    const question = document.getElementById("pollQuestionInput").value.trim();
+    if (!question) { alert("Please enter a question."); return; }
+    const type = document.getElementById("pollTypeSelect").value;
+    const inputs = [...document.querySelectorAll(".poll-option-input")];
+    const options = inputs.map((inp, i) => ({
+      id: `opt_${Date.now()}_${i}`,
+      text: inp.value.trim() || `Option ${i + 1}`,
+      image: "",
+      voters: [],
+    }));
+    if (options.length < 2) { alert("Need at least 2 options."); return; }
+    stagingPollType = type;
+    window.stagingPollDataBlueprint = { question, type, options };
+    pollCreatorModal.style.display = "none";
+    // Show a small confirmation badge on the poll button
+    toolBtnPoll.style.color = "var(--accent-purple)";
+    toolBtnPoll.title = `Poll ready: "${question}"`;
+  };
 }
 
 // Publish Post Submission Actions
@@ -1867,14 +1963,21 @@ if (publishPostBtn) {
     }
 
     try {
-      await addDoc(collection(db, "posts"), payload);
+      const addedPostRef = await addDoc(collection(db, "posts"), payload);
       const authorName =
         currentUserProfile.displayName || auth.currentUser.email.split("@")[0];
 
       addDoc(collection(db, "notifications"), {
         title: "New Post Published",
-        message: `${authorName} published a post in "${payload.groupName}".`,
+        message: `${authorName} posted in "${payload.groupName}".`,
+        preview: (payload.text || payload.title || "").substring(0, 120),
         type: "post_creation",
+        postId: addedPostRef ? addedPostRef.id : null,
+        groupId: payload.groupId || null,
+        groupName: payload.groupName || null,
+        groupMembers: payload.groupId
+          ? (currentGroupsDataMap[payload.groupId]?.members || [])
+          : null,
         createdBy: auth.currentUser.uid,
         createdAt: new Date(),
         viewedBy: [],
