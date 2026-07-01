@@ -3239,3 +3239,4 @@ document.addEventListener("DOMContentLoaded", () => {
   if (groupIconDropZone) {
     groupIconDropZone.addEventListener("click", () => groupIconInput?.click());
   }
+});
