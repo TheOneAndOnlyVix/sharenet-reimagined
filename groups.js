@@ -133,6 +133,9 @@ function refreshMyPermissions(user) {
 
 onRolesUpdated(() => {
   refreshMyPermissions(auth.currentUser);
+  if (evaluateGroupVisibility()) {
+    evaluateComposerVisibility();
+  }
 });
 
 // =============================================================================
@@ -144,6 +147,7 @@ onRolesUpdated(() => {
 // =============================================================================
 let currentBadgesMap = {};
 let userBadgeIdsMap = {}; // uid -> array of badge ids
+let userDataMap = {}; // uid -> full users/{uid} doc data
 
 onSnapshot(collection(db, "badges"), (snapshot) => {
   const updated = {};
@@ -156,13 +160,16 @@ onSnapshot(collection(db, "badges"), (snapshot) => {
 
 onSnapshot(collection(db, "users"), (snapshot) => {
   const updated = {};
+  const dataMap = {};
   snapshot.forEach((d) => {
     const data = d.data();
+    dataMap[d.id] = data;
     if (data.badgeIds && data.badgeIds.length > 0) {
       updated[d.id] = data.badgeIds;
     }
   });
   userBadgeIdsMap = updated;
+  userDataMap = dataMap;
   refreshAllVisibleAuthorBadges();
 });
 
@@ -194,6 +201,14 @@ function renderBadgePillMarkup(badge) {
 function renderAuthorBadgeRow(authorUid, idPrefix) {
   const badgeIds = userBadgeIdsMap[authorUid];
   if (!badgeIds || badgeIds.length === 0) return "";
+
+  // Respect the author's own canDisplayBadges restriction, if any.
+  const authorData = userDataMap[authorUid];
+  const authorPerms = computePermissions(
+    authorData ? { email: authorData.email } : null,
+    authorData || null
+  );
+  if (!authorPerms.permissions.canDisplayBadges) return "";
 
   const primaryId = badgeIds[badgeIds.length - 1];
   const primaryBadge = currentBadgesMap[primaryId];
@@ -594,6 +609,10 @@ if (openCreateGroupModalBtn) {
       alert("Please log in to submit group creation requests!");
       return;
     }
+    if (!myPermissions.permissions.canRequestGroups) {
+      alert("Your account role does not allow you to request new groups.");
+      return;
+    }
     groupModal.style.display = "flex";
   });
 }
@@ -651,9 +670,13 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
     const isOwner =
       auth.currentUser && auth.currentUser.uid === group.creatorId;
     const canEditGroup =
-      isOwner || myPermissions.isOwner || myPermissions.permissions.editGroups;
+      (isOwner && myPermissions.permissions.canManageOwnGroups) ||
+      myPermissions.isOwner ||
+      myPermissions.permissions.editGroups;
     const canDeleteGroup =
-      isOwner || myPermissions.isOwner || myPermissions.permissions.deleteContent;
+      (isOwner && myPermissions.permissions.canManageOwnGroups) ||
+      myPermissions.isOwner ||
+      myPermissions.permissions.deleteContent;
     const trashBtnHTML = `${
       canEditGroup
         ? `<span class="material-symbols-outlined edit-group-icon" id="edit-group-${id}" style="font-size:16px; color:var(--accent-purple); cursor:pointer;" title="Edit group">edit</span>`
@@ -803,12 +826,22 @@ function evaluateGroupVisibility() {
   const gateUi = document.getElementById("groupGateUi");
   const publicJoinUi = document.getElementById("publicGroupJoinUi");
   const requestsPanel = document.getElementById("groupRequestsPanel");
+  const restrictedUi = document.getElementById("restrictedFeedUi");
 
   // Reset UI
   if (gateUi) gateUi.style.display = "none";
   if (publicJoinUi) publicJoinUi.style.display = "none";
   if (requestsPanel) requestsPanel.style.display = "none";
+  if (restrictedUi) restrictedUi.style.display = "none";
   postsStream.style.display = "flex";
+
+  // A role can fully restrict a member from viewing any content at all.
+  if (auth.currentUser && !myPermissions.permissions.canView) {
+    postsStream.style.display = "none";
+    if (createPostBox) createPostBox.style.display = "none";
+    if (restrictedUi) restrictedUi.style.display = "block";
+    return false;
+  }
 
   if (currentActiveGroupId === "global") return true;
 
@@ -948,6 +981,9 @@ if (grpReqDropdownBtn) {
 if (reqJoinBtn) {
   reqJoinBtn.addEventListener("click", async () => {
     if (!auth.currentUser) return alert("Log in to request access.");
+    if (!myPermissions.permissions.canJoinGroups) {
+      return alert("Your account role does not allow you to join groups.");
+    }
     await addDoc(collection(db, "memberRequests"), {
       groupId: currentActiveGroupId,
       groupName: currentGroupsDataMap[currentActiveGroupId].name,
@@ -973,6 +1009,9 @@ if (cancelJoinBtn) {
 if (joinPublicBtn) {
   joinPublicBtn.addEventListener("click", async () => {
     if (!auth.currentUser) return alert("Log in to join.");
+    if (!myPermissions.permissions.canJoinGroups) {
+      return alert("Your account role does not allow you to join groups.");
+    }
     const grpRef = doc(db, "groups", currentActiveGroupId);
     await updateDoc(grpRef, { members: arrayUnion(auth.currentUser.uid) });
     alert("Joined group successfully!");
@@ -991,6 +1030,10 @@ if (joinPublicBtn) {
 function evaluateComposerVisibility() {
   if (!createPostBox) return;
   if (!auth.currentUser) {
+    createPostBox.style.display = "none";
+    return;
+  }
+  if (!myPermissions.permissions.canPost) {
     createPostBox.style.display = "none";
     return;
   }
@@ -1588,6 +1631,10 @@ async function dispatchNewComment(postId) {
     alert("Please sign in to add content.");
     return;
   }
+  if (!myPermissions.permissions.canComment) {
+    alert("Your account role does not allow you to comment.");
+    return;
+  }
 
   const field = document.getElementById(`comment-field-${postId}`);
   const txt = field ? field.value.trim() : "";
@@ -1940,6 +1987,10 @@ if (pollCreatorModal) {
 if (publishPostBtn) {
   publishPostBtn.addEventListener("click", async () => {
     if (!auth.currentUser) return;
+    if (!myPermissions.permissions.canPost) {
+      alert("Your account role does not allow you to post.");
+      return;
+    }
     const txt = postTextInput.value.trim();
     const title = postTitleInput.value.trim();
 
