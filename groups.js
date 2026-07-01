@@ -28,6 +28,11 @@ import {
   uploadBytes,
   getDownloadURL,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+import {
+  computePermissions,
+  onRolesUpdated,
+  waitForRoles,
+} from "./permissions.js";
 
 // Your Firebase Configuration
 const firebaseConfig = {
@@ -46,8 +51,7 @@ const db = getFirestore(app);
 
 const storage = getStorage(app);
 
-// Admin Email Constants
-const SITE_ADMIN_EMAIL = "ogheneovieumebese@gmail.com";
+// Permission checks now flow through myPermissions (see permissions.js)
 
 // =============================================================================
 //  Content Moderation — calls the ShareNet Worker's /moderate endpoint.
@@ -111,6 +115,25 @@ let stagingPollType = "";
 
 // Current user profile cache
 let currentUserProfile = { displayName: "", photoUrl: "" };
+
+// Live permission set for the signed-in user (custom roles system —
+// see permissions.js). Refreshed on auth changes and whenever the roles
+// catalog itself changes (in case our assigned role gets edited).
+let currentUserData = null;
+let myPermissions = computePermissions(null, null);
+
+function refreshMyPermissions(user) {
+  myPermissions = computePermissions(user, currentUserData);
+  if (adminPanel) {
+    adminPanel.style.display = myPermissions.permissions.manageGroupRequests
+      ? "block"
+      : "none";
+  }
+}
+
+onRolesUpdated(() => {
+  refreshMyPermissions(auth.currentUser);
+});
 
 // =============================================================================
 //  BADGES — read-only here. Mirrors the data model owned by members.js:
@@ -434,32 +457,34 @@ onAuthStateChanged(auth, async (user) => {
   if (user) {
     authNavBtn.innerText = "Sign Out";
     if (authModal) authModal.style.display = "none";
-    if (user.email === SITE_ADMIN_EMAIL) {
-      adminPanel.style.display = "block";
-    } else {
-      adminPanel.style.display = "none";
-    }
 
-    // Load profile from Firestore
+    // Load profile + full user doc (for permission computation) from Firestore
     try {
       const userSnap = await getDoc(doc(db, "users", user.uid));
       if (userSnap.exists()) {
         const d = userSnap.data();
+        currentUserData = d;
         currentUserProfile.displayName =
           d.displayName || user.email.split("@")[0];
         currentUserProfile.photoUrl = d.photoUrl || "";
       } else {
+        currentUserData = null;
         currentUserProfile.displayName = user.email.split("@")[0];
         currentUserProfile.photoUrl = "";
       }
     } catch (e) {
+      currentUserData = null;
       currentUserProfile.displayName = user.email.split("@")[0];
       currentUserProfile.photoUrl = "";
     }
     updateNavAvatar();
+
+    await waitForRoles();
+    refreshMyPermissions(user);
   } else {
     authNavBtn.innerText = "Log In";
-    adminPanel.style.display = "none";
+    currentUserData = null;
+    refreshMyPermissions(null);
     if (navProfileAvatar) {
       navProfileAvatar.innerHTML = "?";
       navProfileAvatar.style.display = "none";
@@ -625,13 +650,19 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
 
     const isOwner =
       auth.currentUser && auth.currentUser.uid === group.creatorId;
-    const isAdmin =
-      auth.currentUser && auth.currentUser.email === SITE_ADMIN_EMAIL;
-    const trashBtnHTML =
-      isOwner || isAdmin
-        ? `<span class="material-symbols-outlined edit-group-icon" id="edit-group-${id}" style="font-size:16px; color:var(--accent-purple); cursor:pointer;" title="Edit group">edit</span>
-           <span class="material-symbols-outlined delete-group-icon" id="del-group-${id}" style="font-size:18px; margin-left:2px; color:#cf6679; cursor:pointer;">delete</span>`
-        : "";
+    const canEditGroup =
+      isOwner || myPermissions.isOwner || myPermissions.permissions.editGroups;
+    const canDeleteGroup =
+      isOwner || myPermissions.isOwner || myPermissions.permissions.deleteContent;
+    const trashBtnHTML = `${
+      canEditGroup
+        ? `<span class="material-symbols-outlined edit-group-icon" id="edit-group-${id}" style="font-size:16px; color:var(--accent-purple); cursor:pointer;" title="Edit group">edit</span>`
+        : ""
+    }${
+      canDeleteGroup
+        ? `<span class="material-symbols-outlined delete-group-icon" id="del-group-${id}" style="font-size:18px; margin-left:2px; color:#cf6679; cursor:pointer;">delete</span>`
+        : ""
+    }`;
 
     const iconHtml = group.iconUrl
       ? `<img src="${group.iconUrl}" class="group-sidebar-icon" />`
@@ -652,43 +683,47 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
       </div>`;
     groupsScrollList.innerHTML += itemHTML;
 
-    if (isOwner || isAdmin) {
+    if (canEditGroup || canDeleteGroup) {
       setTimeout(() => {
-        const editBtn = document.getElementById(`edit-group-${id}`);
-        if (editBtn) {
-          editBtn.onclick = (e) => {
-            e.stopPropagation();
-            openEditGroupModal(id, group);
-          };
+        if (canEditGroup) {
+          const editBtn = document.getElementById(`edit-group-${id}`);
+          if (editBtn) {
+            editBtn.onclick = (e) => {
+              e.stopPropagation();
+              openEditGroupModal(id, group);
+            };
+          }
         }
 
-        const tBtn = document.getElementById(`del-group-${id}`);
-        if (tBtn) {
-          tBtn.onclick = (e) => {
-            e.stopPropagation();
-            if (
-              confirm(`Are you sure you would like to remove "${group.name}"?`)
-            ) {
-              addDoc(collection(db, "notifications"), {
-                title: "Group Removed",
-                message: `"${group.name}" was removed.`,
-                type: "group_deletion",
-                createdBy: auth.currentUser.uid,
-                createdAt: new Date(),
-                viewedBy: [],
-              }).then(() => {
-                deleteDoc(doc(db, "groups", id)).then(() => {
-                  if (currentActiveGroupId === id) {
-                    switchGroupContext(
-                      "global",
-                      "Main Feed",
-                      "Displaying all global posts and public group content."
-                    );
-                  }
+        if (canDeleteGroup) {
+          const tBtn = document.getElementById(`del-group-${id}`);
+          if (tBtn) {
+            tBtn.onclick = (e) => {
+              e.stopPropagation();
+              if (
+                confirm(`Are you sure you would like to remove "${group.name}"?`)
+              ) {
+                addDoc(collection(db, "notifications"), {
+                  title: "Group Removed",
+                  message: `"${group.name}" was removed.`,
+                  type: "group_deletion",
+                  createdBy: auth.currentUser.uid,
+                  createdAt: new Date(),
+                  viewedBy: [],
+                }).then(() => {
+                  deleteDoc(doc(db, "groups", id)).then(() => {
+                    if (currentActiveGroupId === id) {
+                      switchGroupContext(
+                        "global",
+                        "Main Feed",
+                        "Displaying all global posts and public group content."
+                      );
+                    }
+                  });
                 });
-              });
-            }
-          };
+              }
+            };
+          }
         }
       }, 50);
     }
@@ -784,7 +819,8 @@ function evaluateGroupVisibility() {
     auth.currentUser && group.members?.includes(auth.currentUser.uid);
   const isAdminOrOwner =
     auth.currentUser &&
-    (auth.currentUser.email === SITE_ADMIN_EMAIL ||
+    (myPermissions.isOwner ||
+      myPermissions.permissions.manageGroupRequests ||
       group.creatorId === auth.currentUser.uid);
 
   // Show member request panel for owners/admins
@@ -1163,7 +1199,8 @@ function filterAndRenderPosts(filterQuery) {
       const isAuthor =
         auth.currentUser && post.authorId === auth.currentUser.uid;
       const isAdmin =
-        auth.currentUser && auth.currentUser.email === SITE_ADMIN_EMAIL;
+        auth.currentUser &&
+        (myPermissions.isOwner || myPermissions.permissions.deleteContent);
 
       const actionsTemplate =
         isAuthor || isAdmin
@@ -1479,7 +1516,8 @@ function bindRealTimeCommentsStream(postId) {
         const isCommentOwner =
           auth.currentUser && auth.currentUser.uid === comm.authorUid;
         const isAdmin =
-          auth.currentUser && auth.currentUser.email === SITE_ADMIN_EMAIL;
+          auth.currentUser &&
+          (myPermissions.isOwner || myPermissions.permissions.deleteContent);
         const commentDelBtn =
           isCommentOwner || isAdmin
             ? `<span class="material-symbols-outlined" id="del-comm-${postId}-${cId}" style="font-size:14px; color:#cf6679; cursor:pointer; margin-left:auto;">delete</span>`
