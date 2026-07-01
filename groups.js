@@ -647,9 +647,8 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
       <div class="group-item ${
         currentActiveGroupId === id ? "active" : ""
       }" id="target-grp-${id}" data-group-id="${id}">
-        <span class="group-item-label">${iconHtml}${group.name}</span>
+        <span class="group-item-label">${iconHtml}${group.name}<span style="margin-left:auto;display:flex;gap:2px;">${trashBtnHTML}</span></span>
         <span class="group-item-meta">${accessIcon}${memberCount} member${memberCount !== 1 ? "s" : ""}</span>
-        ${trashBtnHTML}
       </div>`;
     groupsScrollList.innerHTML += itemHTML;
 
