@@ -1166,9 +1166,9 @@ textarea {
   font-size: 14px;
   font-weight: 500;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
   transition: all 0.2s;
   color: var(--text-main);
 }
@@ -3967,23 +3967,9 @@ html.theme-light .profile-role-member {
    21. FEEDBACK FEATURES — group meta, poll creator, notification updates
    ========================================================================== */
 
-/* ── Group sidebar: member count + access icon ── */
-.group-item {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: 8px 10px;
-}
-
-.group-item-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  width: 100%;
-}
-
+/* ── Group sidebar: member count + access icon ──
+   (.group-item and .group-item-label are defined in section 10,
+    updated there to support the new column layout) ── */
 .group-item-meta {
   display: flex;
   align-items: center;
