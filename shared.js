@@ -21,6 +21,7 @@ import {
   setDoc,
   updateDoc,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { computePermissions, waitForRoles, onRolesUpdated } from "./permissions.js";
 
 // ── Firebase (reuse existing app if already initialized by the page's own JS) ─
 const firebaseConfig = {
@@ -38,6 +39,13 @@ const db = getFirestore(app);
 
 // ── Profile cache (shared with any page that imports this module) ─────────────
 let currentUserProfile = { displayName: "", photoUrl: "" };
+let currentUserDataFull = null;
+let sharedMyPermissions = computePermissions(null, null);
+
+onRolesUpdated(() => {
+  sharedMyPermissions = computePermissions(auth.currentUser, currentUserDataFull);
+  applyProfileEditRestrictions();
+});
 
 // ── Inject shared HTML into the page ─────────────────────────────────────────
 function injectSharedHtml() {
@@ -161,6 +169,25 @@ function openProfileModal() {
   }
 
   modal.style.display = "flex";
+  applyProfileEditRestrictions();
+}
+
+// Disable/hide profile edit controls the signed-in user's role restricts.
+function applyProfileEditRestrictions() {
+  const nameInput = document.getElementById("sharedProfileDisplayNameInput");
+  const changePic = document.getElementById("sharedChangePicBtn");
+  const perms = sharedMyPermissions.permissions;
+
+  if (nameInput) {
+    nameInput.disabled = !perms.canChangeDisplayName;
+    nameInput.title = perms.canChangeDisplayName
+      ? ""
+      : "Your account role does not allow changing your display name.";
+  }
+  if (changePic) {
+    changePic.disabled = !perms.canHaveProfilePicture;
+    changePic.style.display = perms.canHaveProfilePicture ? "inline-block" : "none";
+  }
 }
 
 // ── Bind profile modal events ─────────────────────────────────────────────────
@@ -199,8 +226,18 @@ function bindProfileModal() {
   }
 
   if (changePic && picInput) {
-    changePic.addEventListener("click", () => picInput.click());
+    changePic.addEventListener("click", () => {
+      if (!sharedMyPermissions.permissions.canHaveProfilePicture) {
+        alert("Your account role does not allow having a profile picture.");
+        return;
+      }
+      picInput.click();
+    });
     picInput.addEventListener("change", async (e) => {
+      if (!sharedMyPermissions.permissions.canHaveProfilePicture) {
+        alert("Your account role does not allow having a profile picture.");
+        return;
+      }
       const file = e.target.files[0];
       if (!file) return;
       if (file.size > 300 * 1024) {
@@ -218,9 +255,17 @@ function bindProfileModal() {
   if (saveBtn) {
     saveBtn.addEventListener("click", async () => {
       if (!auth.currentUser) return;
-      const newName = document
-        .getElementById("sharedProfileDisplayNameInput")
-        ?.value.trim();
+      const perms = sharedMyPermissions.permissions;
+      const nameField = document.getElementById("sharedProfileDisplayNameInput");
+      const typedName = nameField ? nameField.value.trim() : "";
+
+      // If the role restricts display name changes, keep whatever name is
+      // already saved rather than trusting the (disabled, but still
+      // client-editable) input value.
+      const newName = perms.canChangeDisplayName
+        ? typedName
+        : currentUserProfile.displayName;
+
       if (!newName) {
         alert("Display name cannot be empty.");
         return;
@@ -229,7 +274,16 @@ function bindProfileModal() {
         alert("Display name must be 40 characters or less.");
         return;
       }
-      currentUserProfile.displayName = newName;
+      if (perms.canChangeDisplayName) {
+        currentUserProfile.displayName = newName;
+      }
+
+      // If the role restricts profile pictures, don't persist a staged
+      // photo change even if one snuck through via drag/drop or paste.
+      const photoUrlToSave = perms.canHaveProfilePicture
+        ? currentUserProfile.photoUrl
+        : "";
+      if (!perms.canHaveProfilePicture) currentUserProfile.photoUrl = "";
 
       // Persist dark mode preference
       const darkToggle = document.getElementById("sharedDarkModeToggle");
@@ -240,7 +294,7 @@ function bindProfileModal() {
       try {
         await updateDoc(doc(db, "users", auth.currentUser.uid), {
           displayName: newName,
-          photoUrl: currentUserProfile.photoUrl,
+          photoUrl: photoUrlToSave,
         });
       } catch {
         await setDoc(doc(db, "users", auth.currentUser.uid), {
@@ -433,20 +487,28 @@ onAuthStateChanged(auth, async (user) => {
       const snap = await getDoc(doc(db, "users", user.uid));
       if (snap.exists()) {
         const d = snap.data();
+        currentUserDataFull = d;
         currentUserProfile.displayName =
           d.displayName || user.email.split("@")[0];
         currentUserProfile.photoUrl = d.photoUrl || "";
       } else {
+        currentUserDataFull = null;
         currentUserProfile.displayName = user.email.split("@")[0];
         currentUserProfile.photoUrl = "";
       }
     } catch {
+      currentUserDataFull = null;
       currentUserProfile.displayName = user.email.split("@")[0];
       currentUserProfile.photoUrl = "";
     }
+    await waitForRoles();
+    sharedMyPermissions = computePermissions(user, currentUserDataFull);
+    applyProfileEditRestrictions();
     updateNavAvatar();
   } else {
     currentUserProfile = { displayName: "", photoUrl: "" };
+    currentUserDataFull = null;
+    sharedMyPermissions = computePermissions(null, null);
     const navAvatar = document.getElementById("navProfileAvatar");
     if (navAvatar) {
       navAvatar.innerHTML = "?";
