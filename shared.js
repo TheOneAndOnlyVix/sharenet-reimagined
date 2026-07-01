@@ -461,3 +461,4 @@ document.addEventListener("DOMContentLoaded", () => {
   injectSharedHtml();
   bindProfileModal();
   bindChatbot();
+});
