@@ -27,6 +27,7 @@ import {
   limit,
   deleteDoc,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { computePermissions, waitForRoles, onRolesUpdated } from "./permissions.js";
 
 // ── Firebase Config ────────────────────────────────────────────
 const firebaseConfig = {
@@ -160,6 +161,8 @@ async function checkContent(text, { aiEnabled = true } = {}) {
 // ── State ───────────────────────────────────────────────────────
 let currentUser = null;
 let currentUserProfile = { displayName: "", photoUrl: "" };
+let currentUserData = null;
+let myPermissions = computePermissions(null, null);
 let activeChannelId = null;
 let activeMessageUnsubscribe = null;
 let conversationUnsubscribe = null;
@@ -332,30 +335,63 @@ onAuthStateChanged(auth, async (user) => {
       const snap = await getDoc(doc(db, "users", user.uid));
       if (snap.exists()) {
         const d = snap.data();
+        currentUserData = d;
         currentUserProfile.displayName =
           d.displayName || user.email.split("@")[0];
         currentUserProfile.photoUrl = d.photoUrl || "";
       } else {
+        currentUserData = null;
         currentUserProfile.displayName = user.email.split("@")[0];
         currentUserProfile.photoUrl = "";
       }
     } catch {
+      currentUserData = null;
       currentUserProfile.displayName = user.email.split("@")[0];
       currentUserProfile.photoUrl = "";
     }
 
     updateNavAvatar();
-    showMessengerApp();
-    loadAllUsers();
-    listenForConversations();
-    syncNotificationBadge();
+    await waitForRoles();
+    myPermissions = computePermissions(user, currentUserData);
+
+    if (myPermissions.permissions.canUseMessenger) {
+      showMessengerApp();
+      loadAllUsers();
+      listenForConversations();
+      syncNotificationBadge();
+    } else {
+      showRestrictedWall();
+      if (conversationUnsubscribe) {
+        conversationUnsubscribe();
+        conversationUnsubscribe = null;
+      }
+    }
   } else {
     authNavBtn.innerText = "Log In";
     if (navProfileAvatar) {
       navProfileAvatar.innerHTML = "?";
       navProfileAvatar.style.display = "none";
     }
+    currentUserData = null;
+    myPermissions = computePermissions(null, null);
     showAuthWall();
+    if (conversationUnsubscribe) {
+      conversationUnsubscribe();
+      conversationUnsubscribe = null;
+    }
+  }
+});
+
+onRolesUpdated(() => {
+  if (!currentUser) return;
+  myPermissions = computePermissions(currentUser, currentUserData);
+  if (myPermissions.permissions.canUseMessenger) {
+    showMessengerApp();
+    loadAllUsers();
+    listenForConversations();
+    syncNotificationBadge();
+  } else {
+    showRestrictedWall();
     if (conversationUnsubscribe) {
       conversationUnsubscribe();
       conversationUnsubscribe = null;
@@ -370,6 +406,23 @@ function updateNavAvatar() {
 }
 
 function showAuthWall() {
+  const title = document.getElementById("messengerAuthWallTitle");
+  const msg = document.getElementById("messengerAuthWallMsg");
+  const btn = document.getElementById("openAuthFromMessenger");
+  if (title) title.innerText = "Sign in to use Messenger";
+  if (msg) msg.innerText = "Direct messaging is only available to logged-in members.";
+  if (btn) btn.style.display = "inline-block";
+  if (messengerAuthWall) messengerAuthWall.style.display = "flex";
+  if (messengerApp) messengerApp.style.display = "none";
+}
+
+function showRestrictedWall() {
+  const title = document.getElementById("messengerAuthWallTitle");
+  const msg = document.getElementById("messengerAuthWallMsg");
+  const btn = document.getElementById("openAuthFromMessenger");
+  if (title) title.innerText = "Messenger Restricted";
+  if (msg) msg.innerText = "Your account role does not currently allow you to use Messenger.";
+  if (btn) btn.style.display = "none";
   if (messengerAuthWall) messengerAuthWall.style.display = "flex";
   if (messengerApp) messengerApp.style.display = "none";
 }
