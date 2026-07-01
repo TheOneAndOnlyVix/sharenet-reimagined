@@ -1591,7 +1591,6 @@ async function dispatchNewComment(postId) {
       viewedBy: [],
     });
 
-    const currentPost = masterPostsCache.find((p) => p.id === postId);
     const updatedCount = currentPost ? (currentPost.commentsCount || 0) + 1 : 1;
 
     updateDoc(doc(db, "posts", postId), { commentsCount: updatedCount }).then(
