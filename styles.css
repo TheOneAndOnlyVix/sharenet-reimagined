@@ -1592,6 +1592,7 @@ textarea {
   align-items: center;
   text-align: center;
   padding: 24px 20px;
+  position: relative;
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
@@ -4054,4 +4055,173 @@ html.theme-light .poll-option-input {
 
 html.theme-light .notif-preview {
   color: var(--text-muted);
+}
+
+/* ==========================================================================
+   20. ROLES SYSTEM & MEMBER CARD ACTIONS MENU
+   ========================================================================== */
+
+/* ── "..." kebab button in the top-right corner of a member card ── */
+.member-card-menu-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card-hover);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s;
+  z-index: 2;
+}
+
+.member-card-menu-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.member-card-menu-btn:hover {
+  background: var(--accent-purple);
+  border-color: var(--accent-purple);
+  color: #fff;
+}
+
+/* ── Generic role pill, used in the Role Manager list ── */
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.role-manager-row {
+  align-items: center;
+}
+
+/* ── Create/Edit Role modal ── */
+.role-editor-box {
+  max-width: 480px;
+  width: 92%;
+}
+
+.role-permissions-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.role-permission-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card-hover);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.role-permission-check:hover {
+  border-color: var(--accent-purple);
+}
+
+.role-permission-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  margin-top: 2px;
+  accent-color: var(--accent-purple);
+  cursor: pointer;
+}
+
+.role-permission-check-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.role-permission-check-text strong {
+  font-size: 13px;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.role-permission-check-text small {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Member Actions popup (opened from the "..." button) ── */
+.member-actions-box {
+  max-width: 440px;
+  width: 92%;
+  max-height: 84vh;
+  overflow-y: auto;
+}
+
+.member-actions-section {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 14px;
+  background: var(--bg-card-hover);
+}
+
+.member-actions-section:last-child {
+  margin-bottom: 0;
+}
+
+.member-actions-section h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-purple);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 10px;
+}
+
+.member-actions-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.member-actions-row select {
+  flex: 1;
+}
+
+.member-actions-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Light mode overrides ── */
+html.theme-light .member-card-menu-btn {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+  color: var(--text-muted);
+}
+
+html.theme-light .role-permission-check {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+
+html.theme-light .member-actions-section {
+  background: var(--bg-card);
+  border-color: var(--border-color);
 }
