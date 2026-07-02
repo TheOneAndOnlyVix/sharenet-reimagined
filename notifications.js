@@ -13,9 +13,11 @@ import {
   query,
   orderBy,
   doc,
+  getDoc,
   updateDoc,
   arrayUnion,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { computePermissions, waitForRoles, onRolesUpdated } from "./permissions.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDFKAnb3hipbmCFOujKIpdh3jbp18RFGlE",
@@ -112,8 +114,11 @@ if (authForm) {
   });
 }
 
+let currentNotifUserData = null;
+let notifMyPermissions = computePermissions(null, null);
+
 // Global Auth State Observer with Safe Guard Routing
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
   if (user) {
     if (authNavBtn) authNavBtn.innerText = "Sign Out";
     if (authModal) authModal.style.display = "none";
@@ -121,12 +126,33 @@ onAuthStateChanged(auth, (user) => {
     if (navProfileAvatar) {
       navProfileAvatar.innerText = baseName.charAt(0).toUpperCase();
     }
-    // Safe to initialize now that user context exists
-    initializeLiveNotificationsEngine();
+
+    try {
+      const snap = await getDoc(doc(db, "users", user.uid));
+      currentNotifUserData = snap.exists() ? snap.data() : null;
+    } catch (e) {
+      currentNotifUserData = null;
+    }
+    await waitForRoles();
+    notifMyPermissions = computePermissions(user, currentNotifUserData);
+
+    if (notifMyPermissions.permissions.canViewNotifications) {
+      // Safe to initialize now that user context exists
+      initializeLiveNotificationsEngine();
+    } else {
+      if (unsubscribeNotifications) {
+        unsubscribeNotifications();
+        unsubscribeNotifications = null;
+      }
+      if (notificationBadge) notificationBadge.style.display = "none";
+      showRestrictedNotifications();
+    }
   } else {
     if (authNavBtn) authNavBtn.innerText = "Log In";
     if (navProfileAvatar) navProfileAvatar.innerText = "?";
     if (notificationBadge) notificationBadge.style.display = "none";
+    currentNotifUserData = null;
+    notifMyPermissions = computePermissions(null, null);
 
     // Detach any previous engine streams safely
     if (unsubscribeNotifications) {
@@ -143,6 +169,34 @@ onAuthStateChanged(auth, (user) => {
         </div>
       `;
     }
+  }
+});
+
+function showRestrictedNotifications() {
+  if (notificationsContainer) {
+    notificationsContainer.innerHTML = `
+      <div style="text-align: center; padding: 40px; background: var(--bg-card); border-radius: 8px; border: 1px solid var(--border-color);">
+        <h3 style="color: var(--accent-purple); margin-bottom: 10px;">Notifications Restricted</h3>
+        <p style="color: var(--text-muted); font-size: 14px;">Your account role does not currently allow you to view notifications.</p>
+      </div>
+    `;
+  }
+}
+
+// Re-evaluate live if the signed-in user's role changes while this page
+// is open (e.g. an admin toggles canViewNotifications on/off).
+onRolesUpdated(() => {
+  if (!auth.currentUser) return;
+  notifMyPermissions = computePermissions(auth.currentUser, currentNotifUserData);
+  if (notifMyPermissions.permissions.canViewNotifications) {
+    initializeLiveNotificationsEngine();
+  } else {
+    if (unsubscribeNotifications) {
+      unsubscribeNotifications();
+      unsubscribeNotifications = null;
+    }
+    if (notificationBadge) notificationBadge.style.display = "none";
+    showRestrictedNotifications();
   }
 });
 
