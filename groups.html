@@ -490,6 +490,51 @@
     </div>
 
     <!-- ================================================================
+         EDIT POST MODAL (author only)
+         ================================================================ -->
+    <div id="editPostModal" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <span id="closeEditPostModal" class="close-btn">&times;</span>
+        <h2>Edit Post</h2>
+        <div class="input-group">
+          <label>Title <span style="color:var(--text-muted);font-size:12px;">(optional)</span></label>
+          <input type="text" id="editPostTitleInput" placeholder="Post title" maxlength="120" />
+        </div>
+        <div class="input-group">
+          <label>Content</label>
+          <textarea id="editPostTextInput" rows="6" placeholder="Post content" style="width:100%;resize:vertical;"></textarea>
+        </div>
+        <button id="saveEditPostBtn" class="submit-btn" style="margin-top:8px;">Save Changes</button>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         POST EDIT HISTORY MODAL
+         ================================================================ -->
+    <div id="postHistoryModal" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <span id="closePostHistoryModal" class="close-btn">&times;</span>
+        <h2>Edit History</h2>
+        <p class="subtitle" style="margin-bottom:16px;">Previous versions of this post, most recent first.</p>
+        <div id="postHistoryList" class="post-history-list"></div>
+      </div>
+    </div>
+
+    <!-- ================================================================
+         REACTION PICKER MODAL — search + emoji grid
+         ================================================================ -->
+    <div id="reactionPickerModal" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <span id="closeReactionPickerModal" class="close-btn">&times;</span>
+        <h2>Add a Reaction</h2>
+        <div class="input-group">
+          <input type="text" id="reactionSearchField" placeholder="Search emojis..." />
+        </div>
+        <div id="reactionEmojiGrid"></div>
+      </div>
+    </div>
+
+    <!-- ================================================================
          POLL CREATOR MODAL
          ================================================================ -->
     <div id="pollCreatorModal" class="modal-overlay" style="display:none">
