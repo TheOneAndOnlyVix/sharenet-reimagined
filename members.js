@@ -272,6 +272,18 @@ function refreshCurrentPermissions(user) {
   if (openCreateRoleBtn) {
     openCreateRoleBtn.style.display = perms.makeRoles ? "inline-block" : "none";
   }
+
+  applyMembersPageRestriction();
+}
+
+// A role can restrict a member from viewing the members directory at all.
+function applyMembersPageRestriction() {
+  const restrictedUi = document.getElementById("membersRestrictedUi");
+  const restricted = auth.currentUser && !currentPermissions.permissions.canViewMembers;
+
+  if (restrictedUi) restrictedUi.style.display = restricted ? "block" : "none";
+  if (membersGrid) membersGrid.style.display = restricted ? "none" : "grid";
+  if (restricted && membersAdminPanel) membersAdminPanel.style.display = "none";
 }
 
 onRolesUpdated(() => {
