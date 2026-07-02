@@ -74,6 +74,9 @@ export const RESTRICTION_PERMISSION_DEFS = [
   { key: "canDisplayBadges", label: "Have Badges Displayed", hint: "Show earned badges on their account." },
   { key: "canChangeDisplayName", label: "Change Display Name", hint: "Edit their profile display name." },
   { key: "canHaveProfilePicture", label: "Have a Profile Picture", hint: "Set/change their profile picture." },
+  { key: "canViewNotifications", label: "View Notifications", hint: "See the site activity/notifications feed." },
+  { key: "canViewMembers", label: "View Members Page", hint: "See the community members directory." },
+  { key: "canUseAssistant", label: "Use ShareNet Assistant", hint: "Chat with the ShareNet AI assistant." },
 ];
 
 // Combined list — handy for anything that just needs every known key
