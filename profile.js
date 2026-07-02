@@ -24,6 +24,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import {
   getFirestore,
+  initializeFirestore,
   doc,
   getDoc,
   getDocs,
@@ -51,7 +52,21 @@ const firebaseConfig = {
 
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+
+// Force long-polling instead of Firestore's default fetch-streaming
+// transport — Safari (and some privacy extensions) block the streaming
+// connection with an "access control checks" fetch error, which silently
+// breaks every realtime listener on the page. Falls back gracefully if
+// another script on this page already initialized Firestore first.
+let db;
+try {
+  db = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+    useFetchStreams: false,
+  });
+} catch (e) {
+  db = getFirestore(app);
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const SITE_ADMIN_EMAIL = "ogheneovieumebese@gmail.com";
