@@ -20,6 +20,7 @@ import {
   where,
   updateDoc,
   arrayUnion,
+  arrayRemove,
   deleteDoc,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
@@ -33,6 +34,7 @@ import {
   onRolesUpdated,
   waitForRoles,
 } from "./permissions.js";
+import { renderEmojiGrid } from "./emoji-library.js";
 
 // Your Firebase Configuration
 const firebaseConfig = {
@@ -97,6 +99,14 @@ let stagingEmbeddedHtmlCode = "";
 let masterPostsCache = [];
 let openCommentSectionsMap = {};
 const activeCommentSubscribersMap = {};
+
+// ── Deep-link support: notifications.js sends links like
+//    groups.html?group=<id>&post=<id> — we need to land on that exact
+//    group + post/comment instead of always defaulting to the main feed.
+const _deepLinkParams = new URLSearchParams(window.location.search);
+let pendingDeepLinkGroupId = _deepLinkParams.get("group");
+let pendingDeepLinkPostId = _deepLinkParams.get("post");
+let deepLinkGroupHandled = false;
 let activeGroupReqListener = null; // Tracks local group member requests
 let activePostsListenerUnsubscribe = null; // NEW: Tracks the active posts feed
 
@@ -794,6 +804,26 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
       refreshGroupSidebarPermissionIcons();
     }, 50);
   });
+
+  // ── Deep-link: land directly on the group a notification pointed at ──
+  if (!deepLinkGroupHandled && pendingDeepLinkGroupId) {
+    deepLinkGroupHandled = true;
+    if (pendingDeepLinkGroupId === "global") {
+      // already the default context — nothing to switch
+    } else {
+      const targetGroup = currentGroupsDataMap[pendingDeepLinkGroupId];
+      if (targetGroup) {
+        switchGroupContext(
+          pendingDeepLinkGroupId,
+          targetGroup.name,
+          targetGroup.description
+        );
+      }
+      // If the group isn't found (deleted, private & not a member, etc.)
+      // we simply stay on the main feed — the post-scroll step below will
+      // just no-op if the post never renders there either.
+    }
+  }
 });
 
 // ── Edit Group Modal ───────────────────────────────────────────────────────────
@@ -848,6 +878,109 @@ function openEditGroupModal(groupId, groupData) {
   };
 
   closeBtn.onclick = () => { modal.style.display = "none"; };
+  modal.style.display = "flex";
+}
+
+// =============================================================================
+//  POST EDITING + EDIT HISTORY
+//  Each save pushes the pre-edit {title, text, editedAt} into the post's
+//  editHistory array before applying the new content, so "edited" always
+//  shows every prior version, oldest edits included.
+// =============================================================================
+
+function openEditPostModal(postId, postData) {
+  const modal = document.getElementById("editPostModal");
+  const titleInput = document.getElementById("editPostTitleInput");
+  const textInput = document.getElementById("editPostTextInput");
+  const saveBtn = document.getElementById("saveEditPostBtn");
+  const closeBtn = document.getElementById("closeEditPostModal");
+  if (!modal) return;
+
+  titleInput.value = postData.title || "";
+  textInput.value = postData.text || "";
+
+  saveBtn.onclick = async () => {
+    // Live re-check at save-time too — same defense-in-depth pattern used
+    // for group edits, so a permission change mid-edit can't sneak through.
+    const livePost = masterPostsCache.find((p) => p.id === postId) || postData;
+    const isAuthorNow = auth.currentUser && livePost.authorId === auth.currentUser.uid;
+    if (!isAuthorNow || !myPermissions.permissions.canEditOwnPosts) {
+      alert("You no longer have permission to edit this post.");
+      modal.style.display = "none";
+      return;
+    }
+
+    const newTitle = titleInput.value.trim();
+    const newText = textInput.value.trim();
+    if (!newTitle && !newText) {
+      alert("Post can't be completely empty.");
+      return;
+    }
+
+    // ── Content moderation on the edited text ──
+    const combinedText = [newTitle, newText].filter(Boolean).join(" ");
+    const filterResult = await checkContent(combinedText);
+    if (!filterResult.allowed) {
+      alert(`Edit blocked: ${filterResult.reason}`);
+      return;
+    }
+
+    const previousVersion = {
+      title: livePost.title || "",
+      text: livePost.text || "",
+      editedAt: new Date(),
+    };
+
+    try {
+      await updateDoc(doc(db, "posts", postId), {
+        title: newTitle,
+        text: newText,
+        lastEditedAt: new Date(),
+        editHistory: arrayUnion(previousVersion),
+      });
+      modal.style.display = "none";
+    } catch (err) {
+      alert("Error saving edit: " + err.message);
+    }
+  };
+
+  closeBtn.onclick = () => { modal.style.display = "none"; };
+  modal.style.display = "flex";
+}
+
+function openPostHistoryModal(postId) {
+  const modal = document.getElementById("postHistoryModal");
+  const list = document.getElementById("postHistoryList");
+  const closeBtn = document.getElementById("closePostHistoryModal");
+  if (!modal || !list) return;
+
+  const post = masterPostsCache.find((p) => p.id === postId);
+  const history = (post && post.editHistory) || [];
+
+  if (history.length === 0) {
+    list.innerHTML = `<p class="loading-text">No previous versions found.</p>`;
+  } else {
+    // Most recent previous version first
+    const ordered = [...history].reverse();
+    list.innerHTML = ordered
+      .map((v) => {
+        const when = v.editedAt && v.editedAt.toDate
+          ? v.editedAt.toDate().toLocaleString()
+          : v.editedAt && v.editedAt.seconds
+          ? new Date(v.editedAt.seconds * 1000).toLocaleString()
+          : "Unknown time";
+        return `
+          <div class="post-history-entry">
+            <div class="post-history-entry-time">${when}</div>
+            ${v.title ? `<h4 class="post-history-entry-title">${v.title}</h4>` : ""}
+            <p class="post-history-entry-text">${v.text || ""}</p>
+          </div>
+        `;
+      })
+      .join("");
+  }
+
+  if (closeBtn) closeBtn.onclick = () => { modal.style.display = "none"; };
   modal.style.display = "flex";
 }
 
@@ -1248,6 +1381,12 @@ function filterAndRenderPosts(filterQuery) {
         bindPollVoteListeners(pollContainer, post.id);
       }
 
+      const reactionsBar = document.getElementById(`reactions-bar-${post.id}`);
+      if (reactionsBar) {
+        reactionsBar.innerHTML = buildReactionsMarkup(post);
+        bindReactionPillListeners(reactionsBar, post.id);
+      }
+
       postsStream.appendChild(existingCard);
     } else {
       const displayName =
@@ -1298,11 +1437,18 @@ function filterAndRenderPosts(filterQuery) {
       const isAdmin =
         auth.currentUser &&
         (myPermissions.isOwner || myPermissions.permissions.deleteContent);
+      const canEditThisPost =
+        isAuthor && myPermissions.permissions.canEditOwnPosts;
 
-      const actionsTemplate =
+      const editBtnHTML = canEditThisPost
+        ? `<span class="material-symbols-outlined edit-post-trigger-btn" data-post-id="${post.id}" title="Edit post" style="font-size:16px; color:var(--accent-purple); cursor:pointer; margin-right:8px;">edit</span>`
+        : "";
+
+      const actionsTemplate = `${editBtnHTML}${
         isAuthor || isAdmin
           ? `<button class="delete-post-trigger-btn" data-post-id="${post.id}" style="background:none; border:none; color:#ff4d4d; font-size:12px; cursor:pointer;">Delete Post</button>`
-          : "";
+          : ""
+      }`;
 
       const initialCommentsCount = post.commentsCount || 0;
       const viewsCount = post.viewsCount || 0;
@@ -1347,6 +1493,15 @@ function filterAndRenderPosts(filterQuery) {
             ${mediaTemplate}
             ${htmlTemplate}
             <div id="poll-container-${post.id}">${buildPollMarkup(post)}</div>
+            ${
+              post.lastEditedAt
+                ? `<button type="button" class="post-edited-indicator" data-post-id="${post.id}">edited</button>`
+                : ""
+            }
+          </div>
+
+          <div class="post-reactions-bar" id="reactions-bar-${post.id}">
+            ${buildReactionsMarkup(post)}
           </div>
 
           <div class="post-engagement-bar">
@@ -1401,6 +1556,36 @@ function filterAndRenderPosts(filterQuery) {
   });
 
   setupPostVisibilityObserver();
+  handlePendingPostDeepLink();
+}
+
+// Scrolls to + highlights the post a notification linked to, and opens
+// its comments drawer (comment notifications only carry a postId, not a
+// distinct comment id, so opening the drawer is the closest we can get
+// to "take me to that exact comment"). Runs once per page load.
+function handlePendingPostDeepLink() {
+  if (!pendingDeepLinkPostId) return;
+  const card = document.getElementById(`card-${pendingDeepLinkPostId}`);
+  if (!card) return; // not rendered in this view yet/at all — nothing to do
+
+  const targetPostId = pendingDeepLinkPostId;
+  pendingDeepLinkPostId = null; // only do this once
+
+  setTimeout(() => {
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.classList.add("post-deep-link-highlight");
+    setTimeout(() => card.classList.remove("post-deep-link-highlight"), 2600);
+
+    // Open the comments drawer too, in case this came from a comment
+    // notification — closest available anchor since comments don't have
+    // their own addressable id in the URL scheme.
+    const drawer = document.getElementById(`comments-drawer-${targetPostId}`);
+    if (drawer && drawer.style.display === "none") {
+      openCommentSectionsMap[targetPostId] = true;
+      drawer.style.display = "block";
+      bindRealTimeCommentsStream(targetPostId);
+    }
+  }, 100);
 }
 
 // Generates structural HTML templates for inline post voting widgets
@@ -1580,6 +1765,135 @@ function bindCardEventListeners(card, postId) {
 
   const pollContainer = document.getElementById(`poll-container-${postId}`);
   if (pollContainer) bindPollVoteListeners(pollContainer, postId);
+
+  const editBtn = card.querySelector(".edit-post-trigger-btn");
+  if (editBtn) {
+    editBtn.onclick = () => {
+      const post = masterPostsCache.find((p) => p.id === postId);
+      if (!post) return;
+      // Live re-check — never trust that the pencil icon itself is current.
+      const isAuthorNow = auth.currentUser && post.authorId === auth.currentUser.uid;
+      if (!isAuthorNow || !myPermissions.permissions.canEditOwnPosts) {
+        alert("You no longer have permission to edit this post.");
+        return;
+      }
+      openEditPostModal(postId, post);
+    };
+  }
+
+  const editedIndicator = card.querySelector(".post-edited-indicator");
+  if (editedIndicator) {
+    editedIndicator.onclick = () => openPostHistoryModal(postId);
+  }
+
+  const reactionsBar = document.getElementById(`reactions-bar-${postId}`);
+  if (reactionsBar) bindReactionPillListeners(reactionsBar, postId);
+}
+
+// =============================================================================
+//  POST REACTIONS — { emoji: [uid, uid, ...] } stored on the post doc.
+//  Multiple distinct emoji reactions per person are allowed (Discord-style);
+//  clicking an emoji you've already used toggles it back off.
+// =============================================================================
+
+function buildReactionsMarkup(post) {
+  const reactions = post.reactions || {};
+  const myUid = auth.currentUser ? auth.currentUser.uid : null;
+
+  const pillsHTML = Object.entries(reactions)
+    .filter(([, uids]) => Array.isArray(uids) && uids.length > 0)
+    .map(([emoji, uids]) => {
+      const mine = myUid && uids.includes(myUid);
+      return `
+        <button type="button" class="reaction-pill${mine ? " reaction-pill-mine" : ""}" data-post-id="${post.id}" data-emoji="${emoji}">
+          <span class="reaction-pill-emoji">${emoji}</span>
+          <span class="reaction-pill-count">${uids.length}</span>
+        </button>
+      `;
+    })
+    .join("");
+
+  const addBtnHTML = `
+    <button type="button" class="reaction-add-btn" data-post-id="${post.id}" title="Add a reaction">
+      <span class="material-symbols-outlined" style="font-size:16px;">add_reaction</span>
+      Add Reaction
+    </button>
+  `;
+
+  return pillsHTML + addBtnHTML;
+}
+
+function bindReactionPillListeners(container, postId) {
+  container.querySelectorAll(".reaction-pill").forEach((pill) => {
+    pill.onclick = () => {
+      const emoji = pill.getAttribute("data-emoji");
+      toggleReaction(postId, emoji);
+    };
+  });
+
+  const addBtn = container.querySelector(".reaction-add-btn");
+  if (addBtn) {
+    addBtn.onclick = () => openReactionPickerModal(postId);
+  }
+}
+
+async function toggleReaction(postId, emoji) {
+  if (!auth.currentUser) {
+    alert("Please log in to react to posts.");
+    return;
+  }
+  if (!myPermissions.permissions.canReactToPosts) {
+    alert("Your account role does not allow you to react to posts.");
+    return;
+  }
+
+  const post = masterPostsCache.find((p) => p.id === postId);
+  const existingUids = (post && post.reactions && post.reactions[emoji]) || [];
+  const alreadyReacted = existingUids.includes(auth.currentUser.uid);
+
+  const fieldPath = `reactions.${emoji}`;
+  try {
+    await updateDoc(doc(db, "posts", postId), {
+      [fieldPath]: alreadyReacted
+        ? arrayRemove(auth.currentUser.uid)
+        : arrayUnion(auth.currentUser.uid),
+    });
+  } catch (err) {
+    alert("Error reacting: " + err.message);
+  }
+}
+
+function openReactionPickerModal(postId) {
+  if (!auth.currentUser) {
+    alert("Please log in to react to posts.");
+    return;
+  }
+  if (!myPermissions.permissions.canReactToPosts) {
+    alert("Your account role does not allow you to react to posts.");
+    return;
+  }
+
+  const modal = document.getElementById("reactionPickerModal");
+  const grid = document.getElementById("reactionEmojiGrid");
+  const searchField = document.getElementById("reactionSearchField");
+  const closeBtn = document.getElementById("closeReactionPickerModal");
+  if (!modal || !grid) return;
+
+  const renderGrid = (term) => {
+    renderEmojiGrid(grid, term, (char) => {
+      toggleReaction(postId, char);
+      modal.style.display = "none";
+    });
+  };
+
+  if (searchField) {
+    searchField.value = "";
+    searchField.oninput = (e) => renderGrid(e.target.value);
+  }
+  renderGrid("");
+
+  if (closeBtn) closeBtn.onclick = () => { modal.style.display = "none"; };
+  modal.style.display = "flex";
 }
 
 // Connects sub-collection data snapshot sync bindings for comment tracking
@@ -2232,975 +2546,7 @@ function syncNavNotificationBadgeOnly() {
   });
 }
 
-// --- Custom Internal Emoji Keyboard Palette Lookup Dataset Library ---
-const EMOJI_LIBRARY = {
-  all: [
-    // === SMILEYS & EMOTIONS ===
-    {
-      char: "😀",
-      terms: ["smile", "happy", "face", "joy", "grin", "cheerful", "positive"],
-    },
-    {
-      char: "😂",
-      terms: ["laugh", "cry", "lol", "funny", "haha", "joke", "tears"],
-    },
-    {
-      char: "🤣",
-      terms: [
-        "rofl",
-        "laugh",
-        "rolling",
-        "floor",
-        "funny",
-        "hilarious",
-        "lol",
-        "haha",
-      ],
-    },
-    {
-      char: "😊",
-      terms: ["smile", "happy", "blush", "sweet", "nice", "kind", "face"],
-    },
-    {
-      char: "🥰",
-      terms: [
-        "love",
-        "hearts",
-        "blush",
-        "warm",
-        "crush",
-        "affectionate",
-        "adore",
-      ],
-    },
-    {
-      char: "😍",
-      terms: [
-        "love",
-        "eye-hearts",
-        "adore",
-        "crush",
-        "beautiful",
-        "gorgeous",
-        "like",
-      ],
-    },
-    {
-      char: "🤩",
-      terms: [
-        "starstruck",
-        "amazed",
-        "wow",
-        "awesome",
-        "excited",
-        "cool",
-        "celebrity",
-      ],
-    },
-    {
-      char: "😘",
-      terms: ["kiss", "blow", "love", "romantic", "affectionate", "smooch"],
-    },
-    {
-      char: "😋",
-      terms: ["yummy", "delicious", "food", "hungry", "tongue", "tasty"],
-    },
-    { char: "😛", terms: ["tongue", "playful", "joke", "sassy", "silly"] },
-    {
-      char: "😜",
-      terms: ["wink", "tongue", "crazy", "silly", "playful", "joke"],
-    },
-    {
-      char: "🤔",
-      terms: ["think", "ponder", "hmm", "question", "wonder", "curious"],
-    },
-    {
-      char: "🤨",
-      terms: [
-        "eyebrow",
-        "suspicious",
-        "skeptical",
-        "unsure",
-        "huh",
-        "questioning",
-      ],
-    },
-    {
-      char: "😐",
-      terms: ["neutral", "meh", "blank", "serious", "pokerface", "indifferent"],
-    },
-    {
-      char: "😑",
-      terms: ["expressionless", "unamused", "annoyed", "flat", "bored"],
-    },
-    {
-      char: "😒",
-      terms: [
-        "unamused",
-        "smirk",
-        "meh",
-        "annoyed",
-        "skeptical",
-        "unimpressed",
-      ],
-    },
-    {
-      char: "🙄",
-      terms: ["eyes", "roll", "annoyed", "whatever", "sarcastic", "bored"],
-    },
-    {
-      char: "😬",
-      terms: ["grimace", "awkward", "nervous", "oops", "cringe", "tense"],
-    },
-    {
-      char: "🤥",
-      terms: ["lie", "liar", "pinocchio", "nose", "fake", "dishonest"],
-    },
-    {
-      char: "😌",
-      terms: [
-        "relieved",
-        "peaceful",
-        "calm",
-        "relaxed",
-        "content",
-        "satisfied",
-      ],
-    },
-    {
-      char: "😔",
-      terms: ["sad", "pensive", "regretful", "depressed", "down", "blue"],
-    },
-    { char: "😪", terms: ["sleepy", "tired", "bubble", "nap", "exhausted"] },
-    {
-      char: "😴",
-      terms: ["sleep", "sleeping", "zzz", "tired", "snoring", "bed", "nap"],
-    },
-    {
-      char: "😷",
-      terms: ["mask", "sick", "illness", "doctor", "medical", "healthy"],
-    },
-    {
-      char: "🤒",
-      terms: ["thermometer", "sick", "fever", "ill", "temperature", "disease"],
-    },
-    {
-      char: "🤕",
-      terms: [
-        "bandage",
-        "hurt",
-        "injured",
-        "head",
-        "wound",
-        "pain",
-        "accident",
-      ],
-    },
-    {
-      char: "🤢",
-      terms: ["sick", "nausea", "gross", "green", "vomit", "disgusted"],
-    },
-    {
-      char: "🤮",
-      terms: ["vomit", "puke", "barf", "sick", "gross", "disgusted"],
-    },
-    {
-      char: "🥵",
-      terms: ["hot", "sweating", "summer", "burn", "heat", "warm", "spicy"],
-    },
-    {
-      char: "🥶",
-      terms: ["cold", "freezing", "ice", "winter", "chilly", "frozen", "blue"],
-    },
-    {
-      char: "🥴",
-      terms: ["woozy", "drunk", "dizzy", "tipsy", "high", "confused", "wavy"],
-    },
-    { char: "😵", terms: ["dizzy", "dead", "knocked out", "shocked", "dazed"] },
-    {
-      char: "🤯",
-      terms: [
-        "mindblown",
-        "explode",
-        "shock",
-        "wow",
-        "crazy",
-        "amazing",
-        "head",
-      ],
-    },
-    {
-      char: "🤠",
-      terms: ["cowboy", "hat", "country", "western", "rodeo", "yeehaw"],
-    },
-    {
-      char: "🥳",
-      terms: ["party", "celebrate", "hat", "blower", "birthday", "congrats"],
-    },
-    {
-      char: "😎",
-      terms: ["cool", "sunglasses", "chill", "confident", "awesome", "summer"],
-    },
-    {
-      char: "🤓",
-      terms: [
-        "nerd",
-        "geek",
-        "glasses",
-        "smart",
-        "study",
-        "book",
-        "intelligent",
-      ],
-    },
-    {
-      char: "🧐",
-      terms: ["monocle", "class", "fancy", "inspector", "smart", "look"],
-    },
-    {
-      char: "😕",
-      terms: ["confused", "unsure", "puzzled", "huh", "awkward", "hesitant"],
-    },
-    {
-      char: "😟",
-      terms: ["worried", "anxious", "nervous", "concerned", "afraid"],
-    },
-    { char: "🙁", terms: ["frown", "sad", "unhappy", "slight", "downer"] },
-    {
-      char: "😮",
-      terms: ["gasp", "wow", "open mouth", "surprised", "shocked", "amazed"],
-    },
-    {
-      char: "😲",
-      terms: ["astonished", "shocked", "surprised", "wow", "amazed", "stunned"],
-    },
-    {
-      char: "😳",
-      terms: ["flushed", "embarrassed", "blush", "shocked", "surprised", "shy"],
-    },
-    {
-      char: "🥺",
-      terms: ["plead", "puppy eyes", "begging", "cute", "please", "sad"],
-    },
-    { char: "😢", terms: ["cry", "sad", "tear", "weep", "unhappy", "sorrow"] },
-    {
-      char: "😭",
-      terms: ["cry", "sob", "bawl", "sad", "loud", "tear", "heartbreak", "lol"],
-    },
-    {
-      char: "😱",
-      terms: [
-        "scream",
-        "shock",
-        "scared",
-        "fear",
-        "terrified",
-        "horror",
-        "wow",
-      ],
-    },
-    {
-      char: "😤",
-      terms: ["triumph", "angry", "steam", "proud", "huff", "frustrated"],
-    },
-    {
-      char: "😡",
-      terms: ["angry", "mad", "red", "furious", "rage", "annoyed"],
-    },
-    {
-      char: "🤬",
-      terms: ["cursing", "swear", "angry", "mad", "foul", "mouth", "rage"],
-    },
-    {
-      char: "😈",
-      terms: [
-        "devil",
-        "horn",
-        "evil",
-        "purple",
-        "mischievous",
-        "naughty",
-        "satan",
-      ],
-    },
-    {
-      char: "💀",
-      terms: ["skull", "dead", "death", "skeleton", "lol", "dying", "ghost"],
-    },
-    { char: "💩", terms: ["poop", "turd", "crap", "funny", "brown"] },
-    {
-      char: "🤡",
-      terms: ["clown", "circus", "fool", "silly", "funny", "joke"],
-    },
-    {
-      char: "👻",
-      terms: ["ghost", "spooky", "halloween", "scary", "phantom", "spirit"],
-    },
-    {
-      char: "👾",
-      terms: [
-        "monster",
-        "game",
-        "arcade",
-        "space",
-        "invader",
-        "retro",
-        "pixel",
-      ],
-    },
-    {
-      char: "🤖",
-      terms: ["robot", "bot", "tech", "computer", "mechanical", "ai"],
-    },
-
-    // === GESTURES & BODY ===
-    {
-      char: "👋",
-      terms: ["wave", "hello", "goodbye", "hi", "bye", "greeting", "hand"],
-    },
-    {
-      char: "👍",
-      terms: [
-        "thumbs",
-        "up",
-        "yes",
-        "agree",
-        "like",
-        "okay",
-        "good",
-        "perfect",
-        "approval",
-      ],
-    },
-    {
-      char: "👎",
-      terms: [
-        "thumbs",
-        "down",
-        "no",
-        "disagree",
-        "dislike",
-        "bad",
-        "reject",
-        "disapproval",
-      ],
-    },
-    {
-      char: "👊",
-      terms: ["punch", "fist", "bam", "hit", "brofist", "power", "strength"],
-    },
-    {
-      char: "👏",
-      terms: ["clap", "applaud", "bravo", "hands", "celebrate", "praise"],
-    },
-    {
-      char: "🙌",
-      terms: [
-        "praise",
-        "hooray",
-        "hands",
-        "celebrate",
-        "highfive",
-        "hallelujah",
-      ],
-    },
-    {
-      char: "🤝",
-      terms: ["handshake", "agree", "deal", "business", "partnership", "meet"],
-    },
-    {
-      char: "🙏",
-      terms: [
-        "pray",
-        "please",
-        "thank you",
-        "gratitude",
-        "amen",
-        "highfive",
-        "hope",
-      ],
-    },
-    {
-      char: "💪",
-      terms: [
-        "muscle",
-        "bicep",
-        "strong",
-        "power",
-        "fitness",
-        "gym",
-        "flex",
-        "strength",
-      ],
-    },
-    {
-      char: "👀",
-      terms: ["eyes", "look", "see", "watching", "sneak", "peering"],
-    },
-
-    // === HEARTS & HEART EMOTIONS ===
-    {
-      char: "❤️",
-      terms: ["heart", "love", "like", "romance", "red", "favorite", "passion"],
-    },
-    { char: "🧡", terms: ["orange", "heart", "love", "friendship", "warmth"] },
-    { char: "💛", terms: ["yellow", "heart", "love", "brightness", "happy"] },
-    {
-      char: "💚",
-      terms: ["green", "heart", "love", "nature", "envy", "jealousy"],
-    },
-    {
-      char: "💙",
-      terms: ["blue", "heart", "love", "loyalty", "trust", "calm"],
-    },
-    { char: "💜", terms: ["purple", "heart", "love", "luxury", "royalty"] },
-    {
-      char: "🖤",
-      terms: ["black", "heart", "love", "dark", "goth", "emo", "sorrow"],
-    },
-    { char: "🤍", terms: ["white", "heart", "love", "pure", "peace", "clean"] },
-    {
-      char: "💔",
-      terms: [
-        "broken",
-        "heart",
-        "heartbreak",
-        "sad",
-        "divorce",
-        "end",
-        "sorrow",
-      ],
-    },
-    {
-      char: "🔥",
-      terms: ["fire", "hot", "lit", "cool", "flame", "warm", "burn", "hype"],
-    },
-    {
-      char: "💥",
-      terms: ["collision", "explode", "boom", "bang", "spark", "blast"],
-    },
-    {
-      char: "⭐",
-      terms: [
-        "star",
-        "gold",
-        "bright",
-        "rating",
-        "favorite",
-        "winner",
-        "success",
-      ],
-    },
-    {
-      char: "✨",
-      terms: ["sparkles", "shiny", "magic", "clean", "pretty", "star", "new"],
-    },
-    {
-      char: "💯",
-      terms: [
-        "100",
-        "perfect",
-        "real",
-        "true",
-        "top",
-        "score",
-        "grade",
-        "exact",
-      ],
-    },
-    {
-      char: "💢",
-      terms: ["anger", "vein", "mad", "anime", "annoyed", "frustrated"],
-    },
-
-    // === ANIMALS & NATURE ===
-    {
-      char: "🐶",
-      terms: ["dog", "puppy", "pet", "animal", "canine", "bark", "friend"],
-    },
-    {
-      char: "🐱",
-      terms: ["cat", "kitten", "pet", "animal", "feline", "meow", "purr"],
-    },
-    { char: "🐹", terms: ["hamster", "pet", "animal", "fluffy", "rodent"] },
-    {
-      char: "🐰",
-      terms: ["rabbit", "bunny", "pet", "animal", "easter", "hop"],
-    },
-    {
-      char: "🦊",
-      terms: ["fox", "wild", "animal", "clever", "orange", "foxy"],
-    },
-    {
-      char: "🐻",
-      terms: ["bear", "wild", "animal", "teddy", "brown", "grizzly"],
-    },
-    {
-      char: "🐼",
-      terms: ["panda", "animal", "bear", "china", "bamboo", "black", "white"],
-    },
-    {
-      char: "🦁",
-      terms: ["lion", "wild", "animal", "cat", "king", "roar", "mane"],
-    },
-    { char: "🐮", terms: ["cow", "farm", "animal", "milk", "moo", "cattle"] },
-    { char: "🐷", terms: ["pig", "farm", "animal", "oink", "pork", "bacon"] },
-    {
-      char: "🐵",
-      terms: ["monkey", "animal", "ape", "chimp", "banana", "clever"],
-    },
-    {
-      char: "🐧",
-      terms: ["penguin", "bird", "ice", "antarctica", "cold", "tuxedo"],
-    },
-    {
-      char: "🐦",
-      terms: ["bird", "animal", "fly", "tweet", "wings", "nature"],
-    },
-    {
-      char: "🐝",
-      terms: ["bee", "honey", "insect", "bug", "sting", "buzz", "flower"],
-    },
-    {
-      char: "🦋",
-      terms: ["butterfly", "insect", "bug", "beautiful", "wings", "fly"],
-    },
-    {
-      char: "🐢",
-      terms: ["turtle", "tortoise", "reptile", "slow", "shell", "sea"],
-    },
-    {
-      char: "🦈",
-      terms: ["shark", "fish", "ocean", "sea", "predator", "jaw", "teeth"],
-    },
-    {
-      char: "🌴",
-      terms: [
-        "palm",
-        "tree",
-        "beach",
-        "tropical",
-        "island",
-        "summer",
-        "vacation",
-      ],
-    },
-    {
-      char: "🍀",
-      terms: ["four-leaf clover", "luck", "lucky", "green", "fortune"],
-    },
-    {
-      char: "🌹",
-      terms: ["rose", "flower", "red", "love", "romantic", "bouquet", "garden"],
-    },
-    {
-      char: "🌻",
-      terms: ["sunflower", "flower", "yellow", "sun", "bright", "summer"],
-    },
-    {
-      char: "🌞",
-      terms: ["sun", "face", "bright", "summer", "warm", "sunshine", "daytime"],
-    },
-    {
-      char: "🌙",
-      terms: ["moon", "crescent", "night", "sleep", "dark", "space"],
-    },
-    {
-      char: "🪐",
-      terms: [
-        "planet",
-        "saturn",
-        "space",
-        "orbit",
-        "galaxy",
-        "universe",
-        "astronomy",
-      ],
-    },
-    {
-      char: "🌧️",
-      terms: ["rain", "cloud", "weather", "wet", "storm", "shower", "water"],
-    },
-    {
-      char: "❄️",
-      terms: ["snowflake", "snow", "ice", "winter", "cold", "freezing"],
-    },
-    {
-      char: "🌊",
-      terms: ["wave", "ocean", "sea", "water", "surf", "tsunami", "splash"],
-    },
-
-    // === FOOD & DRINK ===
-    { char: "🍏", terms: ["green apple", "fruit", "healthy", "food", "snack"] },
-    {
-      char: "🍓",
-      terms: ["strawberry", "fruit", "berry", "sweet", "red", "dessert"],
-    },
-    {
-      char: "🍉",
-      terms: [
-        "watermelon",
-        "fruit",
-        "summer",
-        "sweet",
-        "juicy",
-        "red",
-        "green",
-      ],
-    },
-    {
-      char: "🍌",
-      terms: ["banana", "fruit", "yellow", "peel", "monkey", "potassium"],
-    },
-    {
-      char: "🥑",
-      terms: ["avocado", "fruit", "guac", "healthy", "green", "toast"],
-    },
-    {
-      char: "🌶️",
-      terms: ["hot pepper", "chili", "spicy", "hot", "seasoning", "vegetable"],
-    },
-    {
-      char: "🧀",
-      terms: ["cheese", "dairy", "yellow", "swiss", "cheddar", "pizza"],
-    },
-    {
-      char: "🍖",
-      terms: ["meat", "bone", "steak", "pork", "caveman", "carnivore"],
-    },
-    {
-      char: "🍔",
-      terms: [
-        "burger",
-        "hamburger",
-        "cheeseburger",
-        "fast food",
-        "meat",
-        "sandwich",
-      ],
-    },
-    {
-      char: "🍟",
-      terms: ["fries", "french fries", "potato", "fast food", "snack", "salty"],
-    },
-    { char: "🌮", terms: ["taco", "mexican", "shell", "meat", "fast food"] },
-    {
-      char: "🍿",
-      terms: ["popcorn", "movie", "cinema", "snack", "butter", "theater"],
-    },
-    {
-      char: "🍣",
-      terms: ["sushi", "raw fish", "japanese", "seafood", "rice", "roll"],
-    },
-    {
-      char: "🍩",
-      terms: ["donut", "doughnut", "sweet", "pastry", "bakery", "glaze"],
-    },
-    {
-      char: "🍪",
-      terms: [
-        "cookie",
-        "biscuit",
-        "chocolate chip",
-        "sweet",
-        "dessert",
-        "snack",
-      ],
-    },
-    {
-      char: "🎂",
-      terms: [
-        "birthday cake",
-        "celebrate",
-        "party",
-        "dessert",
-        "sweet",
-        "candles",
-      ],
-    },
-    {
-      char: "🍫",
-      terms: ["chocolate", "bar", "sweet", "candy", "cocoa", "dessert"],
-    },
-    {
-      char: "☕",
-      terms: [
-        "coffee",
-        "tea",
-        "mug",
-        "hot drink",
-        "cafe",
-        "morning",
-        "caffeine",
-      ],
-    },
-    {
-      char: "🍾",
-      terms: [
-        "champagne",
-        "bottle",
-        "popping",
-        "celebrate",
-        "party",
-        "alcohol",
-        "wine",
-      ],
-    },
-    { char: "🍺", terms: ["beer", "mug", "alcohol", "pub", "drink", "cold"] },
-    {
-      char: "🍻",
-      terms: ["clinking beers", "cheers", "toast", "pub", "alcohol", "party"],
-    },
-
-    // === ACTIVITIES & SPORTS ===
-    {
-      char: "⚽",
-      terms: ["soccer", "football", "ball", "sport", "game", "match"],
-    },
-    {
-      char: "🏀",
-      terms: ["basketball", "hoop", "ball", "sport", "game", "dribble"],
-    },
-    {
-      char: "🏈",
-      terms: ["football", "american", "ball", "sport", "game", "gridiron"],
-    },
-    {
-      char: "🎾",
-      terms: ["tennis", "racket", "ball", "sport", "game", "court"],
-    },
-    {
-      char: "🎱",
-      terms: ["8ball", "billiards", "pool", "ball", "game", "luck"],
-    },
-    {
-      char: "🎯",
-      terms: ["bullseye", "dart", "target", "hit", "goal", "aim", "perfect"],
-    },
-    {
-      char: "🛹",
-      terms: ["skateboard", "skating", "board", "deck", "extreme", "cool"],
-    },
-    {
-      char: "🏆",
-      terms: [
-        "trophy",
-        "award",
-        "prize",
-        "winner",
-        "gold",
-        "champion",
-        "success",
-      ],
-    },
-    {
-      char: "🎬",
-      terms: [
-        "clapperboard",
-        "movie",
-        "film",
-        "cinema",
-        "director",
-        "production",
-      ],
-    },
-    {
-      char: "🎤",
-      terms: [
-        "microphone",
-        "mic",
-        "singing",
-        "karaoke",
-        "music",
-        "audio",
-        "stage",
-      ],
-    },
-    {
-      char: "🎧",
-      terms: ["headphones", "music", "audio", "listen", "song", "dj"],
-    },
-    {
-      char: "🎨",
-      terms: [
-        "artist palette",
-        "paint",
-        "art",
-        "drawing",
-        "color",
-        "creativity",
-      ],
-    },
-    {
-      char: "🎸",
-      terms: ["guitar", "music", "instrument", "rock", "string", "concert"],
-    },
-    {
-      char: "🎮",
-      terms: ["video game", "controller", "console", "gaming", "gamer", "play"],
-    },
-    {
-      char: "🎲",
-      terms: ["game die", "dice", "gambling", "luck", "boardgame", "roll"],
-    },
-
-    // === TRAVEL & PLACES ===
-    {
-      char: "🚗",
-      terms: ["car", "automobile", "drive", "vehicle", "transport", "road"],
-    },
-    {
-      char: "🚀",
-      terms: [
-        "rocket",
-        "space",
-        "launch",
-        "spaceship",
-        "shuttle",
-        "hype",
-        "fly",
-      ],
-    },
-    {
-      char: "✈️",
-      terms: [
-        "airplane",
-        "plane",
-        "flight",
-        "fly",
-        "travel",
-        "airport",
-        "vacation",
-      ],
-    },
-    { char: "🏠", terms: ["house", "home", "building", "residential", "live"] },
-    {
-      char: "🏢",
-      terms: ["office building", "work", "business", "company", "skyscraper"],
-    },
-    {
-      char: "🏫",
-      terms: [
-        "school",
-        "education",
-        "classroom",
-        "teacher",
-        "student",
-        "learn",
-      ],
-    },
-
-    // === OBJECTS & TOOLS ===
-    {
-      char: "📱",
-      terms: ["mobile phone", "smartphone", "cell", "tech", "screen", "call"],
-    },
-    {
-      char: "💻",
-      terms: ["laptop", "computer", "pc", "tech", "screen", "work", "coding"],
-    },
-    {
-      char: "💡",
-      terms: [
-        "lightbulb",
-        "idea",
-        "bright",
-        "smart",
-        "electricity",
-        "inspiration",
-      ],
-    },
-    {
-      char: "💵",
-      terms: [
-        "dollar bill",
-        "money",
-        "cash",
-        "currency",
-        "rich",
-        "wealth",
-        "payment",
-      ],
-    },
-    {
-      char: "💰",
-      terms: [
-        "money bag",
-        "cash",
-        "wealth",
-        "rich",
-        "gold",
-        "fortune",
-        "coins",
-      ],
-    },
-    {
-      char: "💎",
-      terms: [
-        "diamond",
-        "gem",
-        "jewel",
-        "crystal",
-        "shiny",
-        "expensive",
-        "rich",
-      ],
-    },
-    {
-      char: "🛡️",
-      terms: ["shield", "defense", "protect", "armor", "safety", "guard"],
-    },
-    {
-      char: "🔑",
-      terms: [
-        "key",
-        "lock",
-        "open",
-        "password",
-        "access",
-        "secret",
-        "solution",
-      ],
-    },
-    {
-      char: "🔒",
-      terms: ["locked", "padlock", "security", "privacy", "close", "safe"],
-    },
-    {
-      char: "📝",
-      terms: [
-        "memo",
-        "note",
-        "write",
-        "pencil",
-        "paper",
-        "documentation",
-        "text",
-      ],
-    },
-    {
-      char: "📅",
-      terms: ["calendar", "date", "schedule", "event", "month", "time"],
-    },
-    {
-      char: "📚",
-      terms: [
-        "books",
-        "library",
-        "reading",
-        "study",
-        "learn",
-        "school",
-        "education",
-      ],
-    },
-    {
-      char: "🗑️",
-      terms: ["wastebasket", "trash", "bin", "garbage", "delete", "remove"],
-    },
-  ],
-};
-
+// --- Emoji picker: dataset & grid renderer now live in emoji-library.js ---
 if (emojiSearchField) {
   emojiSearchField.addEventListener("input", (e) => {
     filterAndRenderEmojiGrid(e.target.value.toLowerCase().trim());
@@ -3208,41 +2554,11 @@ if (emojiSearchField) {
 }
 
 function filterAndRenderEmojiGrid(term = "") {
-  if (!emojiGridScrollArea) return;
-  emojiGridScrollArea.innerHTML = "";
-
-  emojiGridScrollArea.style.display = "grid";
-  emojiGridScrollArea.style.gridTemplateColumns =
-    "repeat(auto-fill, minmax(40px, 1fr))";
-  emojiGridScrollArea.style.gap = "8px";
-  emojiGridScrollArea.style.maxHeight = "280px";
-  emojiGridScrollArea.style.overflowY = "auto";
-  emojiGridScrollArea.style.overflowX = "hidden";
-  emojiGridScrollArea.style.padding = "8px";
-
-  const filtered = EMOJI_LIBRARY.all.filter((item) => {
-    if (!term) return true;
-    return item.terms.some((keyword) => keyword.includes(term));
-  });
-
-  if (filtered.length === 0) {
-    emojiGridScrollArea.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:#999; padding:16px; font-size:14px;">No matching emojis found.</div>`;
-    return;
-  }
-
-  filtered.forEach((item) => {
-    const span = document.createElement("span");
-    span.innerText = item.char;
-    span.className = "picker-emoji-cell";
-    span.style.cssText =
-      "font-size:24px; cursor:pointer; text-align:center; padding:5px; user-select:none;";
-    span.onclick = () => {
-      if (postTextInput) {
-        postTextInput.value += item.char;
-        postTextInput.focus();
-      }
-    };
-    emojiGridScrollArea.appendChild(span);
+  renderEmojiGrid(emojiGridScrollArea, term, (char) => {
+    if (postTextInput) {
+      postTextInput.value += char;
+      postTextInput.focus();
+    }
   });
 }
 
