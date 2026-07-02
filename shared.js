@@ -188,6 +188,19 @@ function applyProfileEditRestrictions() {
     changePic.disabled = !perms.canHaveProfilePicture;
     changePic.style.display = perms.canHaveProfilePicture ? "inline-block" : "none";
   }
+
+  applyChatbotRestriction();
+}
+
+// Hides the ShareNet Assistant launcher entirely when restricted, and
+// closes the panel live if a role change revokes access mid-conversation.
+function applyChatbotRestriction() {
+  const toggleBtn = document.getElementById("sharedChatbotToggleBtn");
+  const panel = document.getElementById("sharedChatbotPanel");
+  const allowed = sharedMyPermissions.permissions.canUseAssistant;
+
+  if (toggleBtn) toggleBtn.style.display = allowed ? "flex" : "none";
+  if (!allowed && panel) panel.style.display = "none";
 }
 
 // ── Bind profile modal events ─────────────────────────────────────────────────
@@ -389,6 +402,10 @@ function bindChatbot() {
   const conversationHistory = [];
 
   toggleBtn.addEventListener("click", () => {
+    if (!sharedMyPermissions.permissions.canUseAssistant) {
+      alert("Your account role does not allow you to use the ShareNet Assistant.");
+      return;
+    }
     panel.style.display = panel.style.display === "flex" ? "none" : "flex";
     if (panel.style.display === "flex" && input) input.focus();
   });
@@ -523,4 +540,5 @@ document.addEventListener("DOMContentLoaded", () => {
   injectSharedHtml();
   bindProfileModal();
   bindChatbot();
+  applyChatbotRestriction();
 });
