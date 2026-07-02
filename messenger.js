@@ -28,6 +28,7 @@ import {
   deleteDoc,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { computePermissions, waitForRoles, onRolesUpdated } from "./permissions.js";
+import { renderEmojiGrid } from "./emoji-library.js";
 
 // ── Firebase Config ────────────────────────────────────────────
 const firebaseConfig = {
@@ -73,7 +74,7 @@ const BLOCKED_PATTERNS = [
   /\bsl[u\*]t/i,
   /\bb[a@]st[a@]rd/i,
   /\bd[a@]mn/i,
-  /\bh[e3]ll/i,
+  /\bh[e3]ll\b/i,
   /\bcr[a@]p/i,
   /\bkill\s+(your?self|him|her|them|you|me)\b/i,
   /\bi('ll|will)\s+(kill|murder|stab|shoot|hurt)\b/i,
@@ -167,6 +168,8 @@ let activeChannelId = null;
 let activeMessageUnsubscribe = null;
 let conversationUnsubscribe = null;
 let allUsers = []; // cache of all registered users
+const selectedNewChatUids = new Set(); // multi-select state for New Chat modal
+let pendingGroupIconBase64 = null;
 
 // ── DOM Bindings ────────────────────────────────────────────────
 const messengerAuthWall = document.getElementById("messengerAuthWall");
@@ -180,6 +183,11 @@ const newChatModal = document.getElementById("newChatModal");
 const closeNewChatModal = document.getElementById("closeNewChatModal");
 const userPickerSearch = document.getElementById("userPickerSearch");
 const userPickerList = document.getElementById("userPickerList");
+const groupSetupPanel = document.getElementById("groupSetupPanel");
+const groupChatNameInput = document.getElementById("groupChatNameInput");
+const groupChatIconPreview = document.getElementById("groupChatIconPreview");
+const groupChatIconFileInput = document.getElementById("groupChatIconFileInput");
+const startChatBtn = document.getElementById("startChatBtn");
 
 const emptyChatState = document.getElementById("emptyChatState");
 const activeChatView = document.getElementById("activeChatView");
@@ -189,6 +197,14 @@ const chatRecipientName = document.getElementById("chatRecipientName");
 const messagesContainer = document.getElementById("messagesContainer");
 const messageInput = document.getElementById("messageInput");
 const sendMessageBtn = document.getElementById("sendMessageBtn");
+const messageComposeBar = document.getElementById("messageComposeBar");
+const msgImageBtn = document.getElementById("msgImageBtn");
+const msgImageFileInput = document.getElementById("msgImageFileInput");
+const msgEmojiBtn = document.getElementById("msgEmojiBtn");
+const msgEmojiPickerPanel = document.getElementById("msgEmojiPickerPanel");
+const closeMsgEmojiPanelBtn = document.getElementById("closeMsgEmojiPanelBtn");
+const msgEmojiSearchField = document.getElementById("msgEmojiSearchField");
+const msgEmojiGrid = document.getElementById("msgEmojiGrid");
 
 const authModal = document.getElementById("authModal");
 const closeModal = document.getElementById("closeModal");
@@ -232,6 +248,15 @@ function avatarHtml(profile, size = 38) {
       style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
   }
   return (profile.displayName || "?").charAt(0).toUpperCase();
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 // ── Auth ────────────────────────────────────────────────────────
@@ -489,32 +514,90 @@ async function renderConversationList(docs, filter = "") {
   for (const docSnap of docs) {
     const data = docSnap.data();
     const channelId = docSnap.id;
-    const otherUid = data.participants.find((id) => id !== currentUser.uid);
-    if (!otherUid) continue;
+    const isGroup = !!data.isGroup;
 
-    let otherName = "Unknown User";
-    let otherPhoto = "";
+    let displayName = "Unknown User";
+    let displayPhoto = "";
+    let otherUid = null; // only meaningful for DMs
+
+    if (isGroup) {
+      const memberCount = (data.participants || []).length;
+      displayName = data.groupName || "Group Chat";
+      displayPhoto = data.groupIconUrl || "";
+      if (filter && !displayName.toLowerCase().includes(filter.toLowerCase()))
+        continue;
+
+      const lastMsg = data.lastMessage || "";
+      const lastTime = data.lastMessageAt ? formatTimestamp(data.lastMessageAt) : "";
+      const unread = data.unreadCount?.[currentUser.uid] || 0;
+      const avatarContent = displayPhoto
+        ? `<img src="${displayPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+        : `<span class="material-symbols-outlined" style="font-size:18px;">groups</span>`;
+
+      const item = document.createElement("div");
+      item.className = `conversation-item${activeChannelId === channelId ? " active" : ""}`;
+      item.dataset.channelId = channelId;
+      item.dataset.otherName = displayName;
+      item.innerHTML = `
+        <div class="conv-avatar">${avatarContent}</div>
+        <div class="conv-info">
+          <div class="conv-name-row">
+            <span class="conv-name">${displayName} <span style="color:var(--text-muted);font-weight:400;font-size:11px;">(${memberCount})</span></span>
+            <span class="conv-time">${lastTime}</span>
+          </div>
+          <div class="conv-preview">${
+            lastMsg
+              ? escapeHtml(lastMsg.substring(0, 55)) + (lastMsg.length > 55 ? "…" : "")
+              : "Say hi!"
+          }</div>
+        </div>
+        ${unread > 0 ? `<span class="conv-unread-badge">${unread}</span>` : ""}
+        <button class="conv-delete-btn" data-channel-id="${channelId}" title="Leave group">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
+          </svg>
+        </button>
+      `;
+
+      item.querySelector(".conv-delete-btn").addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (!confirm(`Leave "${displayName}"? You can be re-added by another member later.`))
+          return;
+        await leaveOrDeleteChannel(channelId, data);
+      });
+
+      item.addEventListener("click", (e) => {
+        if (e.target.closest(".conv-delete-btn")) return;
+        openChat(channelId, { isGroup: true, name: displayName, photo: displayPhoto });
+      });
+
+      fragment.appendChild(item);
+      continue;
+    }
+
+    // ── Direct message (existing behavior) ──
+    otherUid = data.participants.find((id) => id !== currentUser.uid);
+    if (!otherUid) continue;
 
     // Pull from the cached array first (Instant render!)
     const cachedUser = allUsers.find((u) => u.uid === otherUid);
     if (cachedUser) {
-      otherName =
-        cachedUser.displayName || cachedUser.email?.split("@")[0] || "User";
-      otherPhoto = cachedUser.photoUrl || "";
+      displayName = cachedUser.displayName || cachedUser.email?.split("@")[0] || "User";
+      displayPhoto = cachedUser.photoUrl || "";
     } else {
       // Fallback network fetch if user is somehow missing from cache
       try {
         const userSnap = await getDoc(doc(db, "users", otherUid));
         if (userSnap.exists()) {
           const ud = userSnap.data();
-          otherName = ud.displayName || ud.email?.split("@")[0] || "User";
-          otherPhoto = ud.photoUrl || "";
+          displayName = ud.displayName || ud.email?.split("@")[0] || "User";
+          displayPhoto = ud.photoUrl || "";
           allUsers.push({ uid: otherUid, ...ud });
         }
       } catch {}
     }
 
-    if (filter && !otherName.toLowerCase().includes(filter.toLowerCase()))
+    if (filter && !displayName.toLowerCase().includes(filter.toLowerCase()))
       continue;
 
     const lastMsg = data.lastMessage || "";
@@ -523,9 +606,9 @@ async function renderConversationList(docs, filter = "") {
       : "";
     const unread = data.unreadCount?.[currentUser.uid] || 0;
 
-    const avatarContent = otherPhoto
-      ? `<img src="${otherPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-      : otherName.charAt(0).toUpperCase();
+    const avatarContent = displayPhoto
+      ? `<img src="${displayPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+      : displayName.charAt(0).toUpperCase();
 
     const item = document.createElement("div");
     item.className = `conversation-item${
@@ -533,13 +616,13 @@ async function renderConversationList(docs, filter = "") {
     }`;
     item.dataset.channelId = channelId;
     item.dataset.otherUid = otherUid;
-    item.dataset.otherName = otherName;
-    item.dataset.otherPhoto = otherPhoto;
+    item.dataset.otherName = displayName;
+    item.dataset.otherPhoto = displayPhoto;
     item.innerHTML = `
         <div class="conv-avatar">${avatarContent}</div>
         <div class="conv-info">
           <div class="conv-name-row">
-            <span class="conv-name">${otherName}</span>
+            <span class="conv-name">${displayName}</span>
             <span class="conv-time">${lastTime}</span>
           </div>
           <div class="conv-preview">${
@@ -560,7 +643,6 @@ async function renderConversationList(docs, filter = "") {
     item
       .querySelector(".conv-delete-btn")
       .addEventListener("click", async (e) => {
-        // ... keep your existing delete click event here ...
         e.stopPropagation();
         if (
           !confirm(
@@ -568,33 +650,12 @@ async function renderConversationList(docs, filter = "") {
           )
         )
           return;
-        try {
-          const channelRef = doc(db, "dmChannels", channelId);
-          const snap = await getDoc(channelRef);
-          if (!snap.exists()) return;
-          const data = snap.data();
-          const remaining = data.participants.filter(
-            (id) => id !== currentUser.uid
-          );
-          if (remaining.length === 0) {
-            await deleteDoc(channelRef);
-          } else {
-            await updateDoc(channelRef, { participants: remaining });
-          }
-          if (activeChannelId === channelId) {
-            activeChannelId = null;
-            if (activeChatView) activeChatView.style.display = "none";
-            if (emptyChatState) emptyChatState.style.display = "flex";
-          }
-        } catch (err) {
-          console.error("Delete conversation error:", err);
-          alert("Could not delete conversation.");
-        }
+        await leaveOrDeleteChannel(channelId, data);
       });
 
     item.addEventListener("click", (e) => {
       if (e.target.closest(".conv-delete-btn")) return;
-      openChat(channelId, otherUid, otherName, otherPhoto);
+      openChat(channelId, { isGroup: false, name: displayName, photo: displayPhoto, otherUid });
     });
 
     fragment.appendChild(item);
@@ -603,6 +664,29 @@ async function renderConversationList(docs, filter = "") {
   // Wipe the old list only once the new elements are completely ready
   conversationsList.innerHTML = "";
   conversationsList.appendChild(fragment);
+}
+
+// Shared leave/delete logic for both DMs and group chats — removes the
+// current user from participants, deleting the channel doc entirely once
+// nobody is left in it.
+async function leaveOrDeleteChannel(channelId, data) {
+  try {
+    const channelRef = doc(db, "dmChannels", channelId);
+    const remaining = (data.participants || []).filter((id) => id !== currentUser.uid);
+    if (remaining.length === 0) {
+      await deleteDoc(channelRef);
+    } else {
+      await updateDoc(channelRef, { participants: remaining });
+    }
+    if (activeChannelId === channelId) {
+      activeChannelId = null;
+      if (activeChatView) activeChatView.style.display = "none";
+      if (emptyChatState) emptyChatState.style.display = "flex";
+    }
+  } catch (err) {
+    console.error("Leave/delete conversation error:", err);
+    alert("Could not update this conversation.");
+  }
 }
 
 // ── Conversation Search ─────────────────────────────────────────
@@ -620,7 +704,8 @@ if (conversationSearch) {
 }
 
 // ── Open / Activate a Chat ──────────────────────────────────────
-function openChat(channelId, otherUid, otherName, otherPhoto) {
+// meta: { isGroup, name, photo, otherUid? }
+function openChat(channelId, meta) {
   activeChannelId = channelId;
 
   // Update sidebar active state
@@ -629,11 +714,15 @@ function openChat(channelId, otherUid, otherName, otherPhoto) {
   });
 
   // Update header
-  const avatarInner = otherPhoto
-    ? `<img src="${otherPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-    : otherName.charAt(0).toUpperCase();
+  const avatarInner = meta.photo
+    ? `<img src="${meta.photo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+    : meta.isGroup
+    ? `<span class="material-symbols-outlined" style="font-size:20px;">groups</span>`
+    : meta.name.charAt(0).toUpperCase();
   if (chatRecipientAvatar) chatRecipientAvatar.innerHTML = avatarInner;
-  if (chatRecipientName) chatRecipientName.innerText = otherName;
+  if (chatRecipientName) chatRecipientName.innerText = meta.name;
+  const subtitleEl = chatRecipientName?.nextElementSibling;
+  if (subtitleEl) subtitleEl.innerText = meta.isGroup ? "Group chat" : "ShareNet member";
 
   // Show the chat view
   if (emptyChatState) emptyChatState.style.display = "none";
@@ -694,11 +783,18 @@ function listenForMessages(channelId) {
       bubble.className = `msg-row ${
         isMine ? "msg-row-mine" : "msg-row-theirs"
       }`;
+      const imageHTML = msg.imageUrl
+        ? `<img src="${msg.imageUrl}" class="msg-image" alt="Sent image" />`
+        : "";
+      const textHTML = msg.text
+        ? `<div class="msg-text">${escapeHtml(msg.text)}</div>`
+        : "";
       bubble.innerHTML = `
         <div class="msg-bubble ${
           isMine ? "msg-bubble-mine" : "msg-bubble-theirs"
         }">
-          <div class="msg-text">${escapeHtml(msg.text)}</div>
+          ${imageHTML}
+          ${textHTML}
           <div class="msg-time">${timeStr}</div>
         </div>
       `;
@@ -711,16 +807,25 @@ function listenForMessages(channelId) {
 }
 
 // ── Send Message ────────────────────────────────────────────────
-async function sendMessage() {
+// `imageUrl`, when provided, sends an image message (optionally with
+// caption text typed alongside it).
+async function sendMessage(imageUrl = null) {
   if (!currentUser || !activeChannelId) return;
-  const text = messageInput?.value.trim();
-  if (!text) return;
+  const text = messageInput?.value.trim() || "";
+  if (!text && !imageUrl) return;
 
-  // ── Content moderation ────────────────────────────────────────────────
-  const filterResult = await checkContent(text);
-  if (!filterResult.allowed) {
-    alert(`Message blocked: ${filterResult.reason}`);
+  if (!myPermissions.permissions.canUseMessenger) {
+    alert("Your account role does not allow you to use Messenger.");
     return;
+  }
+
+  // ── Content moderation (text only — images aren't scanned) ─────────────
+  if (text) {
+    const filterResult = await checkContent(text);
+    if (!filterResult.allowed) {
+      alert(`Message blocked: ${filterResult.reason}`);
+      return;
+    }
   }
   // ──────────────────────────────────────────────────────────────────────
 
@@ -730,42 +835,135 @@ async function sendMessage() {
   const msgRef = collection(db, "dmChannels", activeChannelId, "messages");
 
   try {
-    await addDoc(msgRef, {
-      text,
+    const payload = {
       senderId: currentUser.uid,
       senderName: currentUserProfile.displayName,
       senderPhoto: currentUserProfile.photoUrl || "",
       sentAt: serverTimestamp(),
-    });
+    };
+    if (text) payload.text = text;
+    if (imageUrl) payload.imageUrl = imageUrl;
 
-    // Get channel doc to find the other participant
+    await addDoc(msgRef, payload);
+
+    // Get channel doc so we can bump unread counts for every OTHER
+    // participant — works the same for a 2-person DM or a group chat.
     const channelSnap = await getDoc(channelRef);
     const channelData = channelSnap.data();
-    const otherUid = channelData.participants.find(
+    const otherParticipants = (channelData.participants || []).filter(
       (id) => id !== currentUser.uid
     );
-    const currentUnread = channelData.unreadCount?.[otherUid] || 0;
 
-    // Update channel metadata
+    const unreadUpdates = {};
+    otherParticipants.forEach((uid) => {
+      const currentUnread = channelData.unreadCount?.[uid] || 0;
+      unreadUpdates[`unreadCount.${uid}`] = currentUnread + 1;
+    });
+
     await updateDoc(channelRef, {
-      lastMessage: text,
+      lastMessage: imageUrl ? (text ? text : "📷 Image") : text,
       lastMessageAt: serverTimestamp(),
-      [`unreadCount.${otherUid}`]: currentUnread + 1,
+      ...unreadUpdates,
     });
   } catch (err) {
     console.error("Message send failed:", err);
     alert("Failed to send message. Please try again.");
-    messageInput.value = text; // restore
+    if (text) messageInput.value = text; // restore
   }
 }
 
-if (sendMessageBtn) sendMessageBtn.addEventListener("click", sendMessage);
+if (sendMessageBtn) sendMessageBtn.addEventListener("click", () => sendMessage());
 if (messageInput) {
   messageInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
+  });
+}
+
+// ── Emoji picker ──────────────────────────────────────────────
+function renderMsgEmojiGrid(term) {
+  renderEmojiGrid(msgEmojiGrid, term, (char) => {
+    if (messageInput) {
+      messageInput.value += char;
+      messageInput.focus();
+    }
+  });
+}
+
+if (msgEmojiBtn) {
+  msgEmojiBtn.addEventListener("click", () => {
+    if (!msgEmojiPickerPanel) return;
+    const showing = msgEmojiPickerPanel.style.display === "block";
+    if (showing) {
+      msgEmojiPickerPanel.style.display = "none";
+    } else {
+      if (msgEmojiSearchField) msgEmojiSearchField.value = "";
+      renderMsgEmojiGrid("");
+      msgEmojiPickerPanel.style.display = "block";
+    }
+  });
+}
+if (closeMsgEmojiPanelBtn) {
+  closeMsgEmojiPanelBtn.addEventListener("click", () => {
+    msgEmojiPickerPanel.style.display = "none";
+  });
+}
+if (msgEmojiSearchField) {
+  msgEmojiSearchField.addEventListener("input", (e) => {
+    renderMsgEmojiGrid(e.target.value);
+  });
+}
+
+// ── Image sending (button + drag & drop onto the compose bar) ───
+async function sendImageFile(file) {
+  if (!file || !file.type.startsWith("image/")) {
+    alert("Please choose an image file.");
+    return;
+  }
+  const MAX_BYTES = 2 * 1024 * 1024; // 2MB cap on chat images
+  if (file.size > MAX_BYTES) {
+    alert(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Please use an image under 2 MB.`);
+    return;
+  }
+  if (!activeChannelId) {
+    alert("Select a conversation first.");
+    return;
+  }
+  try {
+    const base64 = await fileToBase64(file);
+    await sendMessage(base64);
+  } catch (err) {
+    alert("Could not send that image: " + err.message);
+  }
+}
+
+if (msgImageBtn && msgImageFileInput) {
+  msgImageBtn.addEventListener("click", () => msgImageFileInput.click());
+  msgImageFileInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (file) sendImageFile(file);
+    msgImageFileInput.value = "";
+  });
+}
+
+if (messageComposeBar) {
+  ["dragenter", "dragover"].forEach((evt) => {
+    messageComposeBar.addEventListener(evt, (e) => {
+      e.preventDefault();
+      messageComposeBar.classList.add("compose-drag-over");
+    });
+  });
+  ["dragleave", "drop"].forEach((evt) => {
+    messageComposeBar.addEventListener(evt, (e) => {
+      e.preventDefault();
+      messageComposeBar.classList.remove("compose-drag-over");
+    });
+  });
+  messageComposeBar.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files[0];
+    if (file) sendImageFile(file);
   });
 }
 
@@ -779,11 +977,16 @@ async function markChannelRead(channelId) {
   } catch {}
 }
 
-// ── New Chat Modal ──────────────────────────────────────────────
+// ── New Chat Modal (multi-select: 1 = DM, 2+ = group) ───────────
 if (newChatBtn) {
   newChatBtn.addEventListener("click", async () => {
     newChatModal.style.display = "flex";
     userPickerSearch.value = "";
+    selectedNewChatUids.clear();
+    pendingGroupIconBase64 = null;
+    if (groupChatNameInput) groupChatNameInput.value = "";
+    if (groupChatIconPreview) groupChatIconPreview.innerHTML = "";
+    updateNewChatModalState();
     await loadAllUsers();
     renderUserPicker("");
   });
@@ -822,13 +1025,77 @@ function renderUserPicker(filter) {
       : name.charAt(0).toUpperCase();
 
     const item = document.createElement("div");
-    item.className = "user-picker-item";
+    item.className = `user-picker-item${selectedNewChatUids.has(u.uid) ? " selected" : ""}`;
     item.innerHTML = `
       <div class="user-picker-avatar">${avatarInner}</div>
       <div class="user-picker-name">${name}</div>
+      <span class="material-symbols-outlined user-picker-check">check_circle</span>
     `;
-    item.addEventListener("click", () => startOrOpenDM(u));
+    item.addEventListener("click", () => {
+      if (selectedNewChatUids.has(u.uid)) {
+        selectedNewChatUids.delete(u.uid);
+        item.classList.remove("selected");
+      } else {
+        selectedNewChatUids.add(u.uid);
+        item.classList.add("selected");
+      }
+      updateNewChatModalState();
+    });
     userPickerList.appendChild(item);
+  });
+}
+
+// Toggles the group-setup panel and updates the start button label based
+// on how many members are currently selected.
+function updateNewChatModalState() {
+  const count = selectedNewChatUids.size;
+  if (groupSetupPanel) groupSetupPanel.style.display = count >= 2 ? "block" : "none";
+
+  if (!startChatBtn) return;
+  if (count === 0) {
+    startChatBtn.disabled = true;
+    startChatBtn.innerText = "Select members to continue";
+  } else if (count === 1) {
+    startChatBtn.disabled = false;
+    startChatBtn.innerText = "Start Direct Message";
+  } else {
+    startChatBtn.disabled = false;
+    startChatBtn.innerText = `Create Group Chat (${count} members)`;
+  }
+}
+
+if (groupChatIconFileInput) {
+  groupChatIconFileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 300 * 1024) {
+      alert("Group icon must be under 300 KB.");
+      return;
+    }
+    pendingGroupIconBase64 = await fileToBase64(file);
+    if (groupChatIconPreview) {
+      groupChatIconPreview.innerHTML = `<img src="${pendingGroupIconBase64}" style="width:100%;height:100%;object-fit:cover;" />`;
+    }
+  });
+}
+
+if (startChatBtn) {
+  startChatBtn.addEventListener("click", async () => {
+    if (selectedNewChatUids.size === 0) return;
+
+    if (selectedNewChatUids.size === 1) {
+      const uid = [...selectedNewChatUids][0];
+      const otherUser = allUsers.find((u) => u.uid === uid);
+      if (otherUser) await startOrOpenDM(otherUser);
+      return;
+    }
+
+    const groupName = (groupChatNameInput?.value || "").trim();
+    if (!groupName) {
+      alert("Please name your group chat.");
+      return;
+    }
+    await createGroupChat([...selectedNewChatUids], groupName, pendingGroupIconBase64);
   });
 }
 
@@ -844,6 +1111,7 @@ async function startOrOpenDM(otherUser) {
     // Create the channel document
     await setDoc(channelRef, {
       participants: [currentUser.uid, otherUser.uid],
+      isGroup: false,
       createdAt: serverTimestamp(),
       lastMessage: "",
       lastMessageAt: serverTimestamp(),
@@ -856,7 +1124,33 @@ async function startOrOpenDM(otherUser) {
 
   const otherName =
     otherUser.displayName || otherUser.email?.split("@")[0] || "User";
-  openChat(channelId, otherUser.uid, otherName, otherUser.photoUrl || "");
+  openChat(channelId, { isGroup: false, name: otherName, photo: otherUser.photoUrl || "", otherUid: otherUser.uid });
+}
+
+async function createGroupChat(memberUids, groupName, iconBase64) {
+  if (!currentUser) return;
+  newChatModal.style.display = "none";
+
+  const allParticipants = [currentUser.uid, ...memberUids];
+  const unreadCount = {};
+  allParticipants.forEach((uid) => (unreadCount[uid] = 0));
+
+  try {
+    const channelRef = await addDoc(collection(db, "dmChannels"), {
+      participants: allParticipants,
+      isGroup: true,
+      groupName,
+      groupIconUrl: iconBase64 || "",
+      createdBy: currentUser.uid,
+      createdAt: serverTimestamp(),
+      lastMessage: "",
+      lastMessageAt: serverTimestamp(),
+      unreadCount,
+    });
+    openChat(channelRef.id, { isGroup: true, name: groupName, photo: iconBase64 || "" });
+  } catch (err) {
+    alert("Error creating group chat: " + err.message);
+  }
 }
 
 // ── Notification Badge Sync ─────────────────────────────────────
