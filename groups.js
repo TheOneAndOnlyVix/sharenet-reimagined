@@ -129,6 +129,9 @@ function refreshMyPermissions(user) {
       ? "block"
       : "none";
   }
+  // Instantly reflect the new permission set on the group sidebar's
+  // edit/delete icons, rather than waiting for the next "groups" snapshot.
+  refreshGroupSidebarPermissionIcons();
 }
 
 onRolesUpdated(() => {
@@ -656,6 +659,44 @@ if (groupForm) {
 }
 
 // --- Render/Stream Group Sidebar Navigation Rows ---
+// Live permission checks for a given group — always read the CURRENT
+// myPermissions at call time (never a value baked in at render time), so
+// a role change takes effect immediately, and so the actual edit/delete
+// actions can never succeed after permission is revoked even if the icon
+// itself is momentarily stale.
+function groupCanEdit(group) {
+  if (!group) return false;
+  const isOwnerOfGroup =
+    auth.currentUser && auth.currentUser.uid === group.creatorId;
+  return (
+    (isOwnerOfGroup && myPermissions.permissions.canManageOwnGroups) ||
+    myPermissions.isOwner ||
+    myPermissions.permissions.editGroups
+  );
+}
+function groupCanDelete(group) {
+  if (!group) return false;
+  const isOwnerOfGroup =
+    auth.currentUser && auth.currentUser.uid === group.creatorId;
+  return (
+    (isOwnerOfGroup && myPermissions.permissions.canManageOwnGroups) ||
+    myPermissions.isOwner ||
+    myPermissions.permissions.deleteContent
+  );
+}
+
+// Re-applies edit/delete icon visibility for every group currently in the
+// sidebar, based on the live permission set. Called whenever myPermissions
+// changes (auth change or role edit) so the UI never shows a stale action.
+function refreshGroupSidebarPermissionIcons() {
+  Object.entries(currentGroupsDataMap).forEach(([id, group]) => {
+    const editBtn = document.getElementById(`edit-group-${id}`);
+    const delBtn = document.getElementById(`del-group-${id}`);
+    if (editBtn) editBtn.style.display = groupCanEdit(group) ? "inline-flex" : "none";
+    if (delBtn) delBtn.style.display = groupCanDelete(group) ? "inline-flex" : "none";
+  });
+}
+
 onSnapshot(collection(db, "groups"), (snapshot) => {
   groupsScrollList.innerHTML = `<div class="group-item ${
     currentActiveGroupId === "global" ? "active" : ""
@@ -667,25 +708,14 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
     const id = docSnap.id;
     currentGroupsDataMap[id] = group;
 
-    const isOwner =
-      auth.currentUser && auth.currentUser.uid === group.creatorId;
-    const canEditGroup =
-      (isOwner && myPermissions.permissions.canManageOwnGroups) ||
-      myPermissions.isOwner ||
-      myPermissions.permissions.editGroups;
-    const canDeleteGroup =
-      (isOwner && myPermissions.permissions.canManageOwnGroups) ||
-      myPermissions.isOwner ||
-      myPermissions.permissions.deleteContent;
-    const trashBtnHTML = `${
-      canEditGroup
-        ? `<span class="material-symbols-outlined edit-group-icon" id="edit-group-${id}" style="font-size:16px; color:var(--accent-purple); cursor:pointer;" title="Edit group">edit</span>`
-        : ""
-    }${
-      canDeleteGroup
-        ? `<span class="material-symbols-outlined delete-group-icon" id="del-group-${id}" style="font-size:18px; margin-left:2px; color:#cf6679; cursor:pointer;">delete</span>`
-        : ""
-    }`;
+    // Both icons are always rendered in the DOM (never conditionally
+    // included) so visibility can be toggled live via refreshGroupSidebar-
+    // PermissionIcons() the instant permissions change, rather than only
+    // updating the next time the "groups" collection itself changes.
+    const trashBtnHTML = `
+      <span class="material-symbols-outlined edit-group-icon" id="edit-group-${id}" style="font-size:16px; color:var(--accent-purple); cursor:pointer; display:none;" title="Edit group">edit</span>
+      <span class="material-symbols-outlined delete-group-icon" id="del-group-${id}" style="font-size:18px; margin-left:2px; color:#cf6679; cursor:pointer; display:none;">delete</span>
+    `;
 
     const iconHtml = group.iconUrl
       ? `<img src="${group.iconUrl}" class="group-sidebar-icon" />`
@@ -706,50 +736,63 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
       </div>`;
     groupsScrollList.innerHTML += itemHTML;
 
-    if (canEditGroup || canDeleteGroup) {
-      setTimeout(() => {
-        if (canEditGroup) {
-          const editBtn = document.getElementById(`edit-group-${id}`);
-          if (editBtn) {
-            editBtn.onclick = (e) => {
-              e.stopPropagation();
-              openEditGroupModal(id, group);
-            };
-          }
-        }
+    setTimeout(() => {
+      const editBtn = document.getElementById(`edit-group-${id}`);
+      const tBtn = document.getElementById(`del-group-${id}`);
 
-        if (canDeleteGroup) {
-          const tBtn = document.getElementById(`del-group-${id}`);
-          if (tBtn) {
-            tBtn.onclick = (e) => {
-              e.stopPropagation();
-              if (
-                confirm(`Are you sure you would like to remove "${group.name}"?`)
-              ) {
-                addDoc(collection(db, "notifications"), {
-                  title: "Group Removed",
-                  message: `"${group.name}" was removed.`,
-                  type: "group_deletion",
-                  createdBy: auth.currentUser.uid,
-                  createdAt: new Date(),
-                  viewedBy: [],
-                }).then(() => {
-                  deleteDoc(doc(db, "groups", id)).then(() => {
-                    if (currentActiveGroupId === id) {
-                      switchGroupContext(
-                        "global",
-                        "Main Feed",
-                        "Displaying all global posts and public group content."
-                      );
-                    }
-                  });
-                });
-              }
-            };
+      // Handlers are always bound (regardless of current permission) —
+      // each one re-checks live permission the instant it's clicked, so
+      // there's no window where a stale-but-still-present icon can be
+      // used to sneak an edit/delete through.
+      if (editBtn) {
+        editBtn.onclick = (e) => {
+          e.stopPropagation();
+          const currentGroupData = currentGroupsDataMap[id] || group;
+          if (!groupCanEdit(currentGroupData)) {
+            alert("You no longer have permission to edit this group.");
+            refreshGroupSidebarPermissionIcons();
+            return;
           }
-        }
-      }, 50);
-    }
+          openEditGroupModal(id, currentGroupData);
+        };
+      }
+
+      if (tBtn) {
+        tBtn.onclick = (e) => {
+          e.stopPropagation();
+          const currentGroupData = currentGroupsDataMap[id] || group;
+          if (!groupCanDelete(currentGroupData)) {
+            alert("You no longer have permission to delete this group.");
+            refreshGroupSidebarPermissionIcons();
+            return;
+          }
+          if (
+            confirm(`Are you sure you would like to remove "${currentGroupData.name}"?`)
+          ) {
+            addDoc(collection(db, "notifications"), {
+              title: "Group Removed",
+              message: `"${currentGroupData.name}" was removed.`,
+              type: "group_deletion",
+              createdBy: auth.currentUser.uid,
+              createdAt: new Date(),
+              viewedBy: [],
+            }).then(() => {
+              deleteDoc(doc(db, "groups", id)).then(() => {
+                if (currentActiveGroupId === id) {
+                  switchGroupContext(
+                    "global",
+                    "Main Feed",
+                    "Displaying all global posts and public group content."
+                  );
+                }
+              });
+            });
+          }
+        };
+      }
+
+      refreshGroupSidebarPermissionIcons();
+    }, 50);
   });
 });
 
@@ -783,6 +826,17 @@ function openEditGroupModal(groupId, groupData) {
   };
 
   saveBtn.onclick = async () => {
+    // Re-check live, at the moment of saving — not just at the moment the
+    // modal was opened — so a permission revoked while the modal is open
+    // (or a stale icon click) can never actually persist a change.
+    const liveGroupData = currentGroupsDataMap[groupId] || groupData;
+    if (!groupCanEdit(liveGroupData)) {
+      alert("You no longer have permission to edit this group.");
+      modal.style.display = "none";
+      refreshGroupSidebarPermissionIcons();
+      return;
+    }
+
     const newName = nameInput.value.trim();
     if (!newName) { alert("Group name can't be empty."); return; }
     const updates = { name: newName };
