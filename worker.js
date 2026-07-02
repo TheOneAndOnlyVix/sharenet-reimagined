@@ -12,20 +12,22 @@ SITE KNOWLEDGE:
 - Origin: ShareNet originally started as a Google Doc before being built into a website. It was initially a Wix website but the limited customizabolity led Vix to re-create it on CodeSandbox, a place where he had full access over the files and customization.
 - Homepage: Features recent updates, a member counter, future updates, and links to the official Discord server and the original Google Doc.
 - Profiles: Click the icon next to the notification bell in the top right to open the menu and customize your display name/photo as well as toggle on or off dark mode. In that UI, you can also go to your profile page to edit your account description in the "about" section or see all information on your account.
-- Profile pages: To view a user's profile page, simply click on their icon in either one of their posts/comments or on the members page. There you can see all the information about the user like their follower count, what badges they have, what groups they own, and their join date as well as username and site role (member or admin).
+- Profile pages: To view a user's profile page, simply click on their icon in either one of their posts/comments or on the members page. There you can see all the information about the user like their follower count, what badges they have, what groups they own, and their join date as well as username and site role (member, admin, or a custom role — see Roles & Permissions below).
 - Log In/Sign Up: Click "Log In" in the far top right to log in or create an account. Most features require being logged in.
-- There are custom roles that high enough level admins can impose on users which can either grant or restrict certain privelages such as viewing posts, posting, commenting, using messanger, etc. Advise users to contant Vix for complaints about restrictions. 
 - Posting: Go to the Groups tab, click "Make a post!", and use the composer UI to create your post.
-- Composer UI: The feild at the top allows you to enter a title. The large area underneath allows you to enter the main content of your post, or the body. Pressing the image or video icons to upload a file will automatically create a widget in your post to allow people to preview the file. Using the file attach icon however, will add a button for viewers to download the file to view it instead. The emoji button gives you a list of emojis for those without access to an emoji library as part of their device. To make a poll, simply click the small graph looking icon in the toolbar and fill out the information is asks for. To add html content, click the three dots in the toolbar and select "Embed HTML Content". 
+- Composer UI: The feild at the top allows you to enter a title. The large area underneath allows you to enter the main content of your post, or the body. Pressing the image or video icons to upload a file will automatically create a widget in your post to allow people to preview the file. Using the file attach icon however, will add a button for viewers to download the file to view it instead. The emoji button gives you a list of emojis for those without access to an emoji library as part of their device. To make a poll, simply click the small graph looking icon in the toolbar and fill out the information is asks for. To add html content, click the three dots in the toolbar and select "Embed HTML Content".
+- Editing posts: If you're the author of a post, a small pencil icon appears in its top-right corner — click it to edit the title/content. Once a post has been edited, an "edited" link appears under it that anyone can click to see every previous version of the post.
+- Reactions: Every post has a "+ Add Reaction" button that opens a searchable emoji picker. Pick an emoji to react, click your own reaction again to remove it. You can react with more than one emoji per post.
 - Deleting content: There is deletion button for most user created content on sharenet. It will almost always be symbolized by either red text or a red trashcan.
 - Searching: Click the "search posts" button located directly underneath the title of the group you are currently viewing.
-- Requesting Groups: Click "request group" in the sidebar and fill out the details. An admin will review and approve it.
+- Requesting Groups: Click "request group" in the sidebar and fill out the details. An admin (or anyone with the right permission) will review and approve it.
 - Accessibility: There are two types of groups: public and private. Posts made in a community group dont appear in the main feed until you join said group. Posts made in private groups never appear in the main feed as a security feature. Joining a public group is as easy as selecting it and clicking the join group button. Joining private groups requires you to send a request which will be seen and reviewed by the group owner.
 - Commenting: Click the "comments" text on any post to type and publish a comment. (Note: The ability to reply to other comments is being added soon!)
-- Notifications: All site activity is tracked on the Notifications page. The notification bell shows new activity and clears immediately after you visit the page.
-- Messenger: Go to the Messenger page, click the button in the middle to bring up a list of all ShareNet users, pick someone, and start a chat channel.
+- Notifications: All site activity is tracked on the Notifications page. The notification bell shows new activity and clears immediately after you visit the page. Clicking a notification takes you straight to the exact post (and opens its comments if it was a comment notification) instead of just the main feed.
+- Messenger: Go to the Messenger page and click the + button to bring up a list of all ShareNet users. Select just one person to start a direct message, or select several people to create a group chat (you'll be asked to give the group a name and, optionally, an icon). The message bar has both an emoji button (searchable emoji picker, same as posts) and an image button — you can also drag and drop an image straight onto the message bar to send it.
 - Members: Visit the Members page to see a grid of cards showing the profile picture and display name of every registered user.
-- Content Policy: Every post and comment is automatically screened by an AI content filter before it's published. Messages containing hate speech, threats, harassment, sexual content, or self-harm content are blocked, and self-harm content shows the poster a supportive message with crisis resources instead of just a rejection.
+- Roles & Permissions: The site owner (and anyone they grant the ability to) can create custom roles from the Members page and assign them to other accounts via the "..." menu in the corner of a member's card. Roles can either grant extra abilities (like managing badges, deleting others' content, or reviewing group requests) or restrict a member's normal abilities (like posting, commenting, reacting, joining groups, using Messenger, viewing the members/notifications pages, or using this Assistant). If a member seems unable to do something normal members can usually do, it's likely their role restricts it — they should ask a site admin about it, since ShareNet Assistant can't check or change anyone's permissions.
+- Content Policy: Every post, comment, and message is automatically screened by an AI content filter before it's published. Messages containing hate speech, threats, harassment, sexual content, or self-harm content are blocked, and self-harm content shows the poster a supportive message with crisis resources instead of just a rejection.
 - You: Your name is ShareNet Assistant and your job is to help users learn about and naviagte the platform.
 
 YOUR ROLE & PERSONALITY:
@@ -108,6 +110,34 @@ async function handleChatbot(request, env) {
   }
 }
 
+// ── Common, obviously-benign short messages ──────────────────────────────
+// Llama Guard 3 is occasionally over-eager on very short, low-context
+// messages (a bare "hello" with no surrounding conversation has, in
+// testing, been misclassified as unsafe). Rather than trying to tune the
+// model prompt, we simply skip the AI call entirely for an allowlist of
+// common greetings/acknowledgements — there's no realistic harmful
+// content that is ALSO an exact match for one of these phrases.
+const SAFE_MESSAGE_ALLOWLIST = new Set([
+  "hello", "hi", "hey", "hiya", "yo", "sup", "howdy",
+  "hello!", "hi!", "hey!", "yo!",
+  "hello there", "hi there", "hey there",
+  "good morning", "good afternoon", "good evening", "good night",
+  "morning", "afternoon", "evening",
+  "thanks", "thank you", "thx", "ty",
+  "ok", "okay", "k", "yes", "no", "yep", "nope",
+  "lol", "lmao", "haha", "nice", "cool", "cool!", "great", "awesome",
+  "welcome", "welcome!", "bye", "goodbye", "see ya", "later",
+]);
+
+function isAllowlistedSafeMessage(text) {
+  const normalized = text
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?,]+$/g, "") // strip trailing punctuation before matching
+    .trim();
+  return SAFE_MESSAGE_ALLOWLIST.has(normalized);
+}
+
 // ── Moderation handler (Llama Guard 3 on Workers AI — free, same binding as chatbot) ──
 async function handleModeration(request, env) {
   try {
@@ -115,6 +145,10 @@ async function handleModeration(request, env) {
     let text = (body.text || "").trim();
 
     if (!text) return jsonResponse({ allowed: true });
+
+    if (isAllowlistedSafeMessage(text)) {
+      return jsonResponse({ allowed: true });
+    }
 
     // Guard against oversized payloads
     if (text.length > 4000) text = text.slice(0, 4000);
