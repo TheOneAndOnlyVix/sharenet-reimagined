@@ -4243,3 +4243,249 @@ html.theme-light .member-actions-section {
   background: var(--bg-card);
   border-color: var(--border-color);
 }
+
+/* ==========================================================================
+   21. POST EDITING, EDIT HISTORY, REACTIONS, DEEP-LINK HIGHLIGHT
+   ========================================================================== */
+
+.post-edited-indicator {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+  cursor: pointer;
+  padding: 0;
+  margin-top: 6px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.post-edited-indicator:hover {
+  color: var(--accent-purple);
+}
+
+.post-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.post-history-entry {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--bg-card-hover);
+}
+
+.post-history-entry-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.post-history-entry-title {
+  font-size: 14px;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.post-history-entry-text {
+  font-size: 13px;
+  color: var(--text-main);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Reactions bar ── */
+.post-reactions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.reaction-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.reaction-pill:hover {
+  border-color: var(--accent-purple);
+}
+
+.reaction-pill-mine {
+  border-color: var(--accent-purple);
+  background: rgba(187, 134, 252, 0.15);
+}
+
+.reaction-pill-emoji {
+  font-size: 15px;
+}
+
+.reaction-pill-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.reaction-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px dashed var(--border-color);
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.reaction-add-btn:hover {
+  border-color: var(--accent-purple);
+  color: var(--accent-purple);
+}
+
+/* ── Deep-link highlight — brief pulse to draw the eye to the linked post ── */
+@keyframes postDeepLinkPulse {
+  0% { box-shadow: 0 0 0 0 rgba(187, 134, 252, 0.55); }
+  70% { box-shadow: 0 0 0 14px rgba(187, 134, 252, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(187, 134, 252, 0); }
+}
+
+.post-deep-link-highlight {
+  animation: postDeepLinkPulse 1.3s ease-out 2;
+  border-color: var(--accent-purple) !important;
+}
+
+/* ── Light mode overrides ── */
+html.theme-light .post-history-entry {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+
+html.theme-light .reaction-pill {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+
+html.theme-light .reaction-pill-mine {
+  background: rgba(139, 92, 246, 0.12);
+}
+
+/* ==========================================================================
+   22. MESSENGER — GROUP CHATS, EMOJI PICKER, IMAGE MESSAGES
+   ========================================================================== */
+
+/* ── Multi-select user picker (New Chat modal) ── */
+.user-picker-item {
+  position: relative;
+  border: 1px solid transparent;
+}
+
+.user-picker-check {
+  margin-left: auto;
+  font-size: 20px;
+  color: var(--border-color);
+  transition: color 0.15s;
+}
+
+.user-picker-item.selected {
+  background: rgba(187, 134, 252, 0.1);
+  border-color: var(--accent-purple);
+}
+
+.user-picker-item.selected .user-picker-check {
+  color: var(--accent-purple);
+  font-variation-settings: "FILL" 1;
+}
+
+/* ── Compose bar tool buttons (emoji / image) ── */
+.message-tool-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.message-tool-btn:hover {
+  background: var(--bg-card-hover);
+  color: var(--accent-purple);
+}
+
+.message-compose-bar.compose-drag-over {
+  outline: 2px dashed var(--accent-purple);
+  outline-offset: -4px;
+  background: rgba(187, 134, 252, 0.06);
+}
+
+/* ── Emoji picker panel above the compose bar ── */
+.msg-emoji-picker-panel {
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-card);
+  padding: 10px 14px;
+  flex-shrink: 0;
+}
+
+.msg-emoji-picker-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.msg-emoji-picker-header input {
+  flex: 1;
+  background: var(--bg-body);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 8px 12px;
+  border-radius: 18px;
+  font-size: 13px;
+  outline: none;
+}
+
+/* ── Image messages in chat bubbles ── */
+.msg-image {
+  max-width: 220px;
+  max-height: 260px;
+  border-radius: 12px;
+  display: block;
+  margin-bottom: 4px;
+  cursor: pointer;
+  object-fit: cover;
+}
+
+/* ── Light mode overrides ── */
+html.theme-light .user-picker-item.selected {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+html.theme-light .msg-emoji-picker-panel {
+  background: var(--bg-card);
+}
+
+html.theme-light .msg-emoji-picker-header input {
+  background: var(--bg-card);
+}
