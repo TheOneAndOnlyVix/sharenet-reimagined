@@ -77,6 +77,8 @@ export const RESTRICTION_PERMISSION_DEFS = [
   { key: "canViewNotifications", label: "View Notifications", hint: "See the site activity/notifications feed." },
   { key: "canViewMembers", label: "View Members Page", hint: "See the community members directory." },
   { key: "canUseAssistant", label: "Use ShareNet Assistant", hint: "Chat with the ShareNet AI assistant." },
+  { key: "canEditOwnPosts", label: "Edit Own Posts", hint: "Edit posts after publishing them." },
+  { key: "canReactToPosts", label: "React to Posts", hint: "Add emoji reactions to posts." },
 ];
 
 // Combined list — handy for anything that just needs every known key
