@@ -1848,9 +1848,12 @@ function buildReactionsMarkup(post) {
 
       return `
         <button type="button" class="reaction-pill${mine ? " reaction-pill-mine" : ""}" data-post-id="${post.id}" data-emoji="${emoji}" style="display:inline-flex;align-items:center;">
-          <div style="display:inline-flex;align-items:center;">
-            ${avatarsHTML}
-            ${extraHTML}
+          <div style="display:inline-flex;align-items:center;gap:4px;">
+            <span class="reaction-pill-emoji">${emoji}</span>
+            <div style="display:inline-flex;align-items:center;">
+              ${avatarsHTML}
+              ${extraHTML}
+            </div>
           </div>
         </button>
       `;
