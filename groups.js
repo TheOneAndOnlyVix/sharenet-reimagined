@@ -1819,10 +1819,39 @@ function buildReactionsMarkup(post) {
     .filter(([, uids]) => Array.isArray(uids) && uids.length > 0)
     .map(([emoji, uids]) => {
       const mine = myUid && uids.includes(myUid);
+      // Limit avatars shown to 3, show +X for more
+      const avatarsToShow = uids.slice(0, 3);
+      const remainingCount = uids.length > 3 ? uids.length - 3 : 0;
+
+      let avatarsHTML = '';
+      avatarsToShow.forEach(uid => {
+        const user = userDataMap[uid];
+        let avatarContent = '';
+        let userName = '';
+        if (user) {
+          userName = user.displayName || (user.email ? user.email.split('@')[0] : '');
+          if (user.photoUrl) {
+            avatarContent = `<img src="${user.photoUrl}" alt="${userName || 'User'}" style="width:24px;height:24px;object-fit:cover;border-radius:50%;">`;
+          } else {
+            avatarContent = `<span style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;background-color:#e0e0e0;border-radius:50%;font-size:12px;">${(userName || 'U').charAt(0).toUpperCase()}</span>`;
+          }
+        } else {
+          avatarContent = `<span style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;background-color:#e0e0e0;border-radius:50%;font-size:12px;">?</span>`;
+        }
+        avatarsHTML += `<a href="profile.html?uid=${uid}" style="display:inline-flex;align-items:center;margin-right:4px;" title="${userName || 'User'}">${avatarContent}</a>`;
+      });
+
+      let extraHTML = '';
+      if (remainingCount > 0) {
+        extraHTML = `<span style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;background-color:#e0e0e0;border-radius:50%;font-size:12px;margin-left:4px;">+${remainingCount}</span>`;
+      }
+
       return `
-        <button type="button" class="reaction-pill${mine ? " reaction-pill-mine" : ""}" data-post-id="${post.id}" data-emoji="${emoji}">
-          <span class="reaction-pill-emoji">${emoji}</span>
-          <span class="reaction-pill-count">${uids.length}</span>
+        <button type="button" class="reaction-pill${mine ? " reaction-pill-mine" : ""}" data-post-id="${post.id}" data-emoji="${emoji}" style="display:inline-flex;align-items:center;">
+          <div style="display:inline-flex;align-items:center;">
+            ${avatarsHTML}
+            ${extraHTML}
+          </div>
         </button>
       `;
     })
