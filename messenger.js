@@ -183,6 +183,7 @@ let activeChannelId = null;
 let activeMessageUnsubscribe = null;
 let conversationUnsubscribe = null;
 let allUsers = []; // cache of all registered users
+let userDataMap = {}; // uid -> user data map
 const selectedNewChatUids = new Set(); // multi-select state for New Chat modal
 let pendingGroupIconBase64 = null;
 
@@ -477,16 +478,18 @@ async function loadAllUsers() {
   try {
     const snap = await getDocs(collection(db, "users"));
     allUsers = [];
+    userDataMap = {};
     snap.forEach((d) => {
+      const data = { uid: d.id, ...d.data() };
+      userDataMap[d.id] = data;
       if (d.id !== currentUser.uid) {
-        allUsers.push({ uid: d.id, ...d.data() });
+        allUsers.push(data);
       }
     });
   } catch (err) {
     console.error("Could not load users:", err);
   }
 }
-
 // ── Conversations Sidebar ───────────────────────────────────────
 function listenForConversations() {
   if (conversationUnsubscribe) conversationUnsubscribe();
@@ -787,6 +790,27 @@ function listenForMessages(channelId) {
         messagesContainer.appendChild(sep);
       }
 
+      // Sender info
+      const sender = userDataMap[msg.senderId];
+      let senderName = 'Unknown';
+      let avatarHTML = '';
+      if (sender) {
+        senderName = sender.displayName || (sender.email ? sender.email.split('@')[0] : '');
+        if (sender.photoUrl) {
+          avatarHTML = `<img src="${sender.photoUrl}" alt="${senderName}" class="msg-sender-avatar" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">`;
+        } else {
+          const initial = senderName ? senderName.charAt(0).toUpperCase() : '?';
+          avatarHTML = `<span class="msg-sender-avatar" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;background:#e0e0e0;border-radius:50%;font-size:12px;">${initial}</span>`;
+        }
+      }
+      const senderDiv = document.createElement('div');
+      senderDiv.className = 'msg-sender';
+      senderDiv.style.display = 'flex';
+      senderDiv.style.alignItems = 'center';
+      senderDiv.style.marginBottom = '4px';
+      senderDiv.innerHTML = `${avatarHTML}<span class="msg-sender-name" style="margin-left:8px;font-size:14px;">${senderName}</span>`;
+      messagesContainer.appendChild(senderDiv);
+
       const timeStr = msg.sentAt
         ? new Date(msg.sentAt.seconds * 1000).toLocaleTimeString([], {
             hour: "2-digit",
@@ -820,7 +844,6 @@ function listenForMessages(channelId) {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   });
 }
-
 // ── Send Message ────────────────────────────────────────────────
 // `imageUrl`, when provided, sends an image message (optionally with
 // caption text typed alongside it).
