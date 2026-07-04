@@ -2062,7 +2062,7 @@ function bindRealTimeCommentsStream(postId) {
                 </div>
               </div>
               <span class="comment-body-text">${comment.text}</span>
-              \${showRepliesHTML}
+              ${showRepliesHTML}
               <div id="reply-form-${postId}-${comment.id}" style="margin-top:8px; display:none;">
                 <input type="text" class="comment-message-input-field" id="comment-field-${postId}-reply-${comment.id}" placeholder="Write a reply..." />
                 <button class="submit-comment-action-btn" data-post-id="${postId}" data-reply-to="${comment.id}">Send Reply</button>
