@@ -2233,8 +2233,8 @@ async function dispatchNewComment(postId, replyTo = null) {
           const replyForm = document.getElementById(`reply-form-${postId}-${replyTo}`);
           if (replyForm) {
             replyForm.style.display = 'none';
-            const replyField = document.getElementById(`comment-field-${postId}-reply-${replyTo}`);
-            if (replyField) replyField.value = '';
+            // const replyField = document.getElementById(`comment-field-${postId}-reply-${replyTo}`);
+            // if (replyField) replyField.value = '';
           }
         }
       }
