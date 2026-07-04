@@ -2090,7 +2090,7 @@ function bindRealTimeCommentsStream(postId) {
 
         const showRepliesLinkElement = commentDiv.querySelector(`.show-replies-link[data-post-id="${postId}"][data-parent-id="${comment.id}"]`);
         if (showRepliesLinkElement) {
-          showRepliesLink.onclick = (e) => {
+          showRepliesLinkElement.onclick = (e) => {
             e.stopPropagation();
             const repliesContainer = document.getElementById(`replies-container-${postId}-${comment.id}`);
             if (repliesContainer) {
