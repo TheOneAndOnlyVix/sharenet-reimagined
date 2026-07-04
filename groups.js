@@ -1972,63 +1972,166 @@ function bindRealTimeCommentsStream(postId) {
       if (!listContainer) return;
       listContainer.innerHTML = "";
 
+      // Build a map of comments by ID and collect all comments
+      const commentsMap = new Map();
+      const commentsArray = [];
+
       snapshot.forEach((docSnap) => {
         const comm = docSnap.data();
         const cId = docSnap.id;
+        commentsMap.set(cId, comm);
+        commentsArray.push({ id: cId, ...comm });
+      });
+
+      // Find top-level comments (those with no replyTo or replyTo is null/empty)
+      const topLevelComments = commentsArray.filter(
+        comment => !comment.replyTo || comment.replyTo === null || comment.replyTo === ""
+      );
+
+      // Sort top-level comments by creation time (oldest first)
+      topLevelComments.sort((a, b) => a.createdAt.seconds - b.createdAt.seconds);
+
+      // Function to recursively render a comment and its replies
+      function renderCommentTree(comment, depth = 0) {
+        // Limit depth to prevent excessive nesting (max 3 levels deep as requested)
+        const maxDepth = 3;
+        const effectiveDepth = Math.min(depth, maxDepth);
+
+        // Create comment container
+        const commentDiv = document.createElement("div");
+        commentDiv.className = "comment-item";
+        commentDiv.style.marginLeft = `${effectiveDepth * 20}px`;
+        if (effectiveDepth > 0) {
+          commentDiv.style.borderLeft = `1px solid #e0e0e0`;
+          commentDiv.style.paddingLeft = `10px`;
+        }
+
+        // Get author info
         const displayAuthor =
-          comm.authorDisplayName ||
-          (comm.authorEmail ? comm.authorEmail.split("@")[0] : "Anonymous");
-        const commentPhotoUrl = comm.authorPhotoUrl || "";
+          comment.authorDisplayName ||
+          (comment.authorEmail ? comment.authorEmail.split("@")[0] : "Anonymous");
+        const commentPhotoUrl = comment.authorPhotoUrl || "";
         const userLetter = displayAuthor.charAt(0).toUpperCase();
         const commentAvatar = commentPhotoUrl
           ? `<img src="${commentPhotoUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
           : userLetter;
 
+        // Check if current user can delete this comment
         const isCommentOwner =
-          auth.currentUser && auth.currentUser.uid === comm.authorUid;
+          auth.currentUser && auth.currentUser.uid === comment.authorUid;
         const isAdmin =
           auth.currentUser &&
           (myPermissions.isOwner || myPermissions.permissions.deleteContent);
         const commentDelBtn =
           isCommentOwner || isAdmin
-            ? `<span class="material-symbols-outlined" id="del-comm-${postId}-${cId}" style="font-size:14px; color:#cf6679; cursor:pointer; margin-left:auto;">delete</span>`
+            ? `<span class="material-symbols-outlined" id="del-comm-${postId}-${comment.id}" style="font-size:14px; color:#cf6679; cursor:pointer; margin-left:auto;">delete</span>`
             : "";
 
-        const commentItem = document.createElement("div");
-        commentItem.className = "comment-item";
-        commentItem.innerHTML = `
-        <div class="comment-avatar">${commentAvatar}</div>
-        <div style="display:flex;flex-direction:column;flex:1;">
-          <span style="display:flex; align-items:center;">
-            <a href="profile.html?uid=${comm.authorUid || ""}" class="comment-author-name comment-author-name-link">${displayAuthor}</a>
-            <span class="user-badge-row-slot" data-badge-author-uid="${
-              comm.authorUid || ""
-            }" data-badge-id-prefix="comment-${cId}">${renderAuthorBadgeRow(
-        comm.authorUid,
-        `comment-${cId}`
-      )}</span>
-          </span>
-          <span class="comment-body-text">${comm.text}</span>
-        </div>
-        ${commentDelBtn}
-      `;
-        listContainer.appendChild(commentItem);
-        bindBadgeOverflowTriggers(commentItem);
+        // Reply button - only show if user can comment and we're not at max depth
+        const replyBtn = auth.currentUser && myPermissions.permissions.canComment && depth < maxDepth
+          ? `<button class="reply-comment-btn" data-post-id="${postId}" data-comment-id="${comment.id}" style="background:none; border:none; color:#666; font-size:12px; cursor:pointer; margin-top:4px; padding:2px 4px; border-radius:4px;">Reply</button>`
+          : "";
 
+        // Get replies for this comment
+        const replies = commentsArray.filter(
+          child => child.replyTo === comment.id
+        );
+        const repliesCount = replies.length;
+        const showRepliesLink = repliesCount > 0
+          ? `<div class="show-replies-link" data-post-id="${postId}" data-parent-id="${comment.id}" style="margin-top:4px; font-size:12px; color:#666; cursor:pointer;">Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}</div>`
+          : "";
+
+        // Set inner HTML
+        commentDiv.innerHTML = `
+          <div style="display:flex; align-items:flex-start;">
+            <div class="comment-avatar">${commentAvatar}</div>
+            <div style="display:flex;flex-direction:column;flex:1;">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                <div style="display:flex; align-items:center;">
+                  <a href="profile.html?uid=${comment.authorUid || ""}" class="comment-author-name comment-author-name-link">${displayAuthor}</a>
+                  <span class="user-badge-row-slot" data-badge-author-uid="${
+                    comment.authorUid || ""
+                  }" data-badge-id-prefix="comment-${comment.id}">${renderAuthorBadgeRow(
+          comment.authorUid,
+          `comment-${comment.id}`
+        )}</span>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  ${replyBtn}
+                  ${commentDelBtn}
+                </div>
+              </div>
+              <span class="comment-body-text">${comment.text}</span>
+              ${showRepliesLink}
+              <div id="reply-form-${postId}-${comment.id}" style="margin-top:8px; display:none;">
+                <input type="text" class="comment-message-input-field" id="comment-field-${postId}-reply-${comment.id}" placeholder="Write a reply..." />
+                <button class="submit-comment-action-btn" data-post-id="${postId}" data-reply-to="${comment.id}">Send Reply</button>
+              </div>
+              <div id="replies-container-${postId}-${comment.id}" style="margin-top:8px;"></div>
+            </div>
+          </div>
+        `;
+
+        // Add event listeners for this comment
+        const replyBtnElement = commentDiv.querySelector(".reply-comment-btn");
+        if (replyBtnElement) {
+          replyBtnElement.onclick = (e) => {
+            e.stopPropagation();
+            const replyForm = document.getElementById(`reply-form-${postId}-${comment.id}`);
+            if (replyForm) {
+              replyForm.style.display = replyForm.style.display === 'none' ? 'block' : 'none';
+              if (replyForm.style.display === 'block') {
+                const replyField = commentDiv.querySelector(`#comment-field-${postId}-reply-${comment.id}`);
+                if (replyField) replyField.focus();
+              }
+            }
+          };
+        }
+
+        const showRepliesLink = commentDiv.querySelector(`.show-replies-link[data-post-id="${postId}"][data-parent-id="${comment.id}"]`);
+        if (showRepliesLink) {
+          showRepliesLink.onclick = (e) => {
+            e.stopPropagation();
+            const repliesContainer = document.getElementById(`replies-container-${postId}-${comment.id}`);
+            if (repliesContainer) {
+              if (repliesContainer.innerHTML === '') {
+                // Load and show replies
+                replies.forEach(reply => {
+                  renderCommentTree(reply, depth + 1);
+                });
+                showRepliesLink.textContent = `Hide ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
+              } else {
+                // Hide replies
+                repliesContainer.innerHTML = '';
+                showRepliesLink.textContent = `Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
+              }
+            }
+          };
+        }
+
+        const sendReplyBtn = commentDiv.querySelector(`.submit-comment-action-btn[data-reply-to="${comment.id}"]`);
+        if (sendReplyBtn) {
+          sendReplyBtn.onclick = (e) => {
+            e.stopPropagation();
+            dispatchNewComment(postId, comment.id);
+          };
+        }
+
+        // Handle delete button
         if (isCommentOwner || isAdmin) {
-          const dcBtn = document.getElementById(`del-comm-${postId}-${cId}`);
+          const dcBtn = document.getElementById(`del-comm-${postId}-${comment.id}`);
           if (dcBtn) {
             dcBtn.onclick = () => {
               if (confirm("Remove your comment?")) {
                 addDoc(collection(db, "notifications"), {
                   title: "Comment Deleted",
-                  message: `A comment was deleted.`,
+                  message: "A comment was deleted.",
                   type: "comment_deletion",
                   createdBy: auth.currentUser.uid,
                   createdAt: new Date(),
                   viewedBy: [],
                 }).then(() => {
-                  deleteDoc(doc(db, "posts", postId, "comments", cId)).then(
+                  deleteDoc(doc(db, "posts", postId, "comments", comment.id)).then(
                     () => {
                       const post = masterPostsCache.find(
                         (p) => p.id === postId
@@ -2046,15 +2149,26 @@ function bindRealTimeCommentsStream(postId) {
             };
           }
         }
-      });
 
-      listContainer.scrollTop = listContainer.scrollHeight;
+        // Add the comment div to the container
+        listContainer.appendChild(commentDiv);
+
+        // Recursively render replies
+        replies.forEach(reply => {
+          renderCommentTree(reply, depth + 1);
+        });
+      }
+
+      // Render all top-level comments
+      topLevelComments.forEach(comment => {
+        renderCommentTree(comment, 0);
+      });
     }
   );
 }
 
 // Writes fresh feedback responses safely into nested targets
-async function dispatchNewComment(postId) {
+async function dispatchNewComment(postId, replyTo = null) {
   if (!auth.currentUser) {
     alert("Please sign in to add content.");
     return;
@@ -2064,7 +2178,9 @@ async function dispatchNewComment(postId) {
     return;
   }
 
-  const field = document.getElementById(`comment-field-${postId}`);
+  const field = document.getElementById(
+    `comment-field-${postId}${replyTo ? `-reply-${replyTo}` : ""}`
+  );
   const txt = field ? field.value.trim() : "";
   if (!txt) return;
 
@@ -2079,14 +2195,17 @@ async function dispatchNewComment(postId) {
   const commentAuthorName =
     currentUserProfile.displayName || auth.currentUser.email.split("@")[0];
 
-  addDoc(collection(db, "posts", postId, "comments"), {
+  const commentData = {
     text: txt,
     authorUid: auth.currentUser.uid,
     authorEmail: auth.currentUser.email,
     authorDisplayName: commentAuthorName,
     authorPhotoUrl: currentUserProfile.photoUrl || "",
     createdAt: new Date(),
-  }).then(() => {
+    ...(replyTo !== null && { replyTo })
+  };
+
+  addDoc(collection(db, "posts", postId, "comments"), commentData).then(() => {
     const currentPost = masterPostsCache.find((p) => p.id === postId);
     addDoc(collection(db, "notifications"), {
       title: "New Comment",
@@ -2109,6 +2228,15 @@ async function dispatchNewComment(postId) {
     updateDoc(doc(db, "posts", postId), { commentsCount: updatedCount }).then(
       () => {
         if (field) field.value = "";
+        // Close reply form if this was a reply
+        if (replyTo) {
+          const replyForm = document.getElementById(`reply-form-${postId}-${replyTo}`);
+          if (replyForm) {
+            replyForm.style.display = 'none';
+            const replyField = document.getElementById(`comment-field-${postId}-reply-${replyTo}`);
+            if (replyField) replyField.value = '';
+          }
+        }
       }
     );
   });
