@@ -2149,8 +2149,7 @@ function bindRealTimeCommentsStream(postId) {
         }
 
         // Add the comment div to the container
-        container.appendChild(commentDiv);
-
+      }
 
       // Render all top-level comments
       topLevelComments.forEach(comment => {
