@@ -2037,7 +2037,7 @@ function bindRealTimeCommentsStream(postId) {
           child => child.replyTo === comment.id
         );
         const repliesCount = replies.length;
-        const showRepliesLink = repliesCount > 0
+        const showRepliesHTML = repliesCount > 0
           ? `<div class="show-replies-link" data-post-id="${postId}" data-parent-id="${comment.id}" style="margin-top:4px; font-size:12px; color:#666; cursor:pointer;">Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}</div>`
           : "";
 
@@ -2062,7 +2062,7 @@ function bindRealTimeCommentsStream(postId) {
                 </div>
               </div>
               <span class="comment-body-text">${comment.text}</span>
-              ${showRepliesLink}
+              \${showRepliesHTML}
               <div id="reply-form-${postId}-${comment.id}" style="margin-top:8px; display:none;">
                 <input type="text" class="comment-message-input-field" id="comment-field-${postId}-reply-${comment.id}" placeholder="Write a reply..." />
                 <button class="submit-comment-action-btn" data-post-id="${postId}" data-reply-to="${comment.id}">Send Reply</button>
@@ -2088,8 +2088,8 @@ function bindRealTimeCommentsStream(postId) {
           };
         }
 
-        const showRepliesLink = commentDiv.querySelector(`.show-replies-link[data-post-id="${postId}"][data-parent-id="${comment.id}"]`);
-        if (showRepliesLink) {
+        const showRepliesLinkElement = commentDiv.querySelector(`.show-replies-link[data-post-id="${postId}"][data-parent-id="${comment.id}"]`);
+        if (showRepliesLinkElement) {
           showRepliesLink.onclick = (e) => {
             e.stopPropagation();
             const repliesContainer = document.getElementById(`replies-container-${postId}-${comment.id}`);
@@ -2099,11 +2099,11 @@ function bindRealTimeCommentsStream(postId) {
                 replies.forEach(reply => {
                   renderCommentTree(reply, depth + 1);
                 });
-                showRepliesLink.textContent = `Hide ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
+                showRepliesLinkElement.textContent = `Hide ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
               } else {
                 // Hide replies
                 repliesContainer.innerHTML = '';
-                showRepliesLink.textContent = `Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
+                showRepliesLinkElement.textContent = `Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
               }
             }
           };
