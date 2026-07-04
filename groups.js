@@ -2117,7 +2117,7 @@ function bindRealTimeCommentsStream(postId) {
 
         // Handle delete button
         if (isCommentOwner || isAdmin) {
-          const dcBtn = document.getElementById(`del-comm-${postId}-${comment.id}`);
+          const dcBtn = commentDiv.querySelector(`#del-comm-${postId}-${comment.id}`);
           if (dcBtn) {
             dcBtn.onclick = () => {
               if (confirm("Remove your comment?")) {
@@ -2128,42 +2128,37 @@ function bindRealTimeCommentsStream(postId) {
                   createdBy: auth.currentUser.uid,
                   createdAt: new Date(),
                   viewedBy: [],
-                }).then(() => {
-                  deleteDoc(doc(db, "posts", postId, "comments", comment.id)).then(
-                    () => {
-                      const post = masterPostsCache.find(
-                        (p) => p.id === postId
-                      );
-                      const currentCommentsCount = post
-            });
+                })
+                  .then(() =>
+                    deleteDoc(doc(db, "posts", postId, "comments", comment.id))
+                  )
+                  .then(() => {
+                    const post = masterPostsCache.find((p) => p.id === postId);
+                    const updatedCount = post
+                      ? Math.max((post.commentsCount || 1) - 1, 0)
+                      : 0;
+                    if (post) {
+                      updateDoc(doc(db, "posts", postId), {
+                        commentsCount: updatedCount,
+                      }).catch(console.error);
+                    }
+                  })
+                  .catch(console.error);
+              }
+            };
           }
         }
 
         // Add the comment div to the container
         container.appendChild(commentDiv);
-
-      });
-
-      // Render all top-level comments
-      topLevelComments.forEachLevelComments.forEach(comment => {
-        renderCommentTree(comment, 0);
-      });
-    });
-  );
-}
-          }
-        }
-
-        // Add the comment div to the container
       }
 
       // Render all top-level comments
       topLevelComments.forEach(comment => {
         renderCommentTree(comment, 0);
       });
-    }
-  );
-}
+    });
+  }
 
 // Writes fresh feedback responses safely into nested targets
 async function dispatchNewComment(postId, replyTo = null) {
