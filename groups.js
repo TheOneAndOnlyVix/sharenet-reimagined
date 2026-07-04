@@ -739,7 +739,7 @@ onSnapshot(collection(db, "groups"), (snapshot) => {
     // updating the next time the "groups" collection itself changes.
     const trashBtnHTML = `
       <span class="material-symbols-outlined edit-group-icon" id="edit-group-${id}" style="font-size:16px; color:var(--accent-purple); cursor:pointer; display:none;" title="Edit group">edit</span>
-      <span class="material-symbols-outlined delete-group-icon" id="del-group-${id}" style="font-size:18px; margin-left:2px; color:#cf6679; cursor:pointer; display:none;">delete</span>
+      <span class="material-symbols-outlined delete-group-icon" id="del-group-${id}" style="font-size:18px; margin-left:2px; color:#1976d2; cursor:pointer; display:none;">delete</span>
     `;
 
     const iconHtml = group.iconUrl
@@ -1992,7 +1992,7 @@ function bindRealTimeCommentsStream(postId) {
       topLevelComments.sort((a, b) => a.createdAt.seconds - b.createdAt.seconds);
 
       // Function to recursively render a comment and its replies
-      function renderCommentTree(comment, depth = 0) {
+      function renderCommentTree(comment, depth = 0, container = listContainer) {
         // Limit depth to prevent excessive nesting (max 3 levels deep as requested)
         const maxDepth = 3;
         const effectiveDepth = Math.min(depth, maxDepth);
@@ -2029,18 +2029,16 @@ function bindRealTimeCommentsStream(postId) {
 
         // Reply button - only show if user can comment and we're not at max depth
         const replyBtn = auth.currentUser && myPermissions.permissions.canComment && depth < maxDepth
-          ? `<button class="reply-comment-btn" data-post-id="${postId}" data-comment-id="${comment.id}" style="background:none; border:none; color:#666; font-size:12px; cursor:pointer; margin-top:4px; padding:2px 4px; border-radius:4px;">Reply</button>`
-          : "";
-
+          ? `<button class="reply-comment-btn" data-post-id="${postId}" data-comment-id="${comment.id}" style="background:none; border:none; color:#666; cursor:pointer; font-size:14px; margin-top:4px; padding:0; width:24px; height:24px; display:flex; align-items:center; justify-content:center;"><span class="material-symbols-outlined">reply</span></button>`
+          : ""
         // Get replies for this comment
         const replies = commentsArray.filter(
           child => child.replyTo === comment.id
         );
         const repliesCount = replies.length;
         const showRepliesHTML = repliesCount > 0
-          ? `<div class="show-replies-link" data-post-id="${postId}" data-parent-id="${comment.id}" style="margin-top:4px; font-size:12px; color:#666; cursor:pointer;">Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}</div>`
+          ? `<button class="show-replies-link" data-post-id="${postId}" data-parent-id="${comment.id}" style="background:none; border:none; color:#666; cursor:pointer; font-size:12px; padding:2px 4px; border-radius:4px;">Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}</button>`
           : "";
-
         // Set inner HTML
         commentDiv.innerHTML = `
           <div style="display:flex; align-items:flex-start;">
@@ -2097,7 +2095,7 @@ function bindRealTimeCommentsStream(postId) {
               if (repliesContainer.innerHTML === '') {
                 // Load and show replies
                 replies.forEach(reply => {
-                  renderCommentTree(reply, depth + 1);
+                  renderCommentTree(reply, depth + 1, repliesContainer);
                 });
                 showRepliesLinkElement.textContent = `Hide ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
               } else {
@@ -2151,13 +2149,8 @@ function bindRealTimeCommentsStream(postId) {
         }
 
         // Add the comment div to the container
-        listContainer.appendChild(commentDiv);
+        container.appendChild(commentDiv);
 
-        // Recursively render replies
-        replies.forEach(reply => {
-          renderCommentTree(reply, depth + 1);
-        });
-      }
 
       // Render all top-level comments
       topLevelComments.forEach(comment => {
