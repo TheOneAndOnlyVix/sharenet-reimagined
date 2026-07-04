@@ -1617,81 +1617,108 @@ function buildPollMarkup(post) {
     p.options.some(
       (opt) => opt.voters && opt.voters.includes(auth.currentUser.uid)
     );
+  const userVoteOptionId = auth.currentUser
+    ? p.options.find(
+        (opt) => opt.voters && opt.voters.includes(auth.currentUser.uid)
+      )?.id
+    : null;
 
-  if (p.type === "grid") {
-    optionsMarkup = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">`;
-    p.options.forEach((opt) => {
-      const optVotes = opt.voters ? opt.voters.length : 0;
-      const percent =
-        totalVotes > 0 ? Math.round((optVotes / totalVotes) * 100) : 0;
-      if (hasVoted || !auth.currentUser) {
-        optionsMarkup += `
-          <div style="border:1px solid #ddd; border-radius:6px; background:#2c3545; overflow:hidden; text-align:center; position:relative; padding-bottom:8px;">
-            <img src="${
-              opt.image || "https://via.placeholder.com/150x100?text=No+Image"
-            }" style="width:100%; height:100px; object-fit:cover;" />
-            <div style="font-weight:bold; font-size:13px; margin-top:6px; position:relative; z-index:2; color:#fff;">${
-              opt.text
-            }</div>
-            <div style="font-size:12px; color:#38bdf8; font-weight:bold; margin-top:4px; position:relative; z-index:2;">${percent}% (${optVotes})</div>
-            <div style="position:absolute; bottom:0; left:0; right:0; height:4px; background:#0078d4; width:${percent}%;"></div>
-          </div>`;
+  optionsMarkup = `<ul class="JvvVt _8srCU">`;
+  p.options.forEach((opt, index) => {
+    const optVotes = opt.voters ? opt.voters.length : 0;
+    const percent = totalVotes > 0 ? Math.round((optVotes / totalVotes) * 100) : 0;
+    const userHasVoted = opt.voters && opt.voters.includes(auth.currentUser.uid);
+
+    // Determine if this option should show as selected
+    const isSelected = userHasVoted;
+
+    optionsMarkup += `
+      <li class="oRmDU" data-hook="polls-answer-items">
+        <div class="iyaso XKLok S3PTC ${isSelected ? '_409ff' : 'Lbn7p'}" aria-label="${isSelected ? 'checked' : 'unchecked'}" tabindex="0" role="button">
+          <div class="DMkKn">
+            <svg width="36" height="36" viewBox="0 0 24 24" class="ZoXJ7">
+              <defs>
+                <path id="file-upload-loader-icon-path" d="M14.064 5.948l1.518-.507A8 8 0 1 1 10.473.39l-.506 1.519a6.4 6.4 0 1 0 4.097 4.04z"></path>
+              </defs>
+              <g fill="none" fill-rule="evenodd" transform="translate(4 4)">
+                <mask id="file-upload-loader-mask" fill="#fff">
+                  <use xlink:href="#file-upload-loader-icon-path"></use>
+                </mask>
+                <use fill="currentColor" xlink:href="#file-upload-loader-icon-path"></use>
+                <path fill="currentColor" d="M-4-4h24v24H-4z" mask="url(#file-upload-loader-mask)"></path>
+              </g>
+            </svg>
+          </div>
+          <div class="MTTvp">
+            <p style="border-radius: 0px;" class="KRvbR CZ2-Y cO6DX">
+              <span class="EcH3u" style="width: ${percent}%; background: linear-gradient(90deg, #3b82f6 ${percent}%, transparent ${percent}%); height: 8px; display: block; border-radius: 4px;"></span>
+              <span class="YmwSn" data-hook="polls-items-percentage-preview">${percent}%</span>
+              <span class="hmmNC" data-hook="polls-answer-text-input">${opt.text}</span>
+            </p>
+          </div>
+          <div class="F9qv0" style="color: rgb(0, 0, 0);">
+            <svg width="24px" height="24px" viewBox="0 0 24 24">
+              <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+                <g transform="translate(-496.000000, 0.000000)">
+                  <g>
+                    <polyline stroke="#FFFFFF" stroke-width="2" points="508 23.8193359 508 64 0 64 0 12 496.790039 12"></polyline>
+                    <g transform="translate(496.000000, 0.000000)">
+                      <g>
+                        <circle fill="#FFFFFF" cx="12" cy="12" r="12"></circle>
+                        <g transform="translate(5.000000, 8.000000)" fill="currentColor">
+                          <polygon points="12.2335029 0.239154296 13.4174702 1.3883133 5.59026761 9.73257326 0.586372643 5.73025155 1.59665912 4.42329121 5.43146554 7.49052765"></polygon>
+                        </g>
+                      </g>
+                      <g transform="translate(5.000000, 8.000000)"></g>
+                    </g>
+                  </g>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <div class="_2g8rD Au1xt" role="button" aria-haspopup="dialog" tabindex="0">
+          <ul class="kgahZ">`;
+
+    // Add voter avatars (limit to 4 for display)
+    const votersToShow = opt.voters ? opt.voters.slice(0, 4) : [];
+    votersToShow.forEach((voterId) => {
+      const voter = userDataMap[voterId];
+      let avatarContent = '';
+      let voterName = '';
+      if (voter) {
+        voterName = voter.displayName || (voter.email ? voter.email.split('@')[0] : 'Anonymous');
+        if (voter.photoUrl) {
+          avatarContent = `<img src="${voter.photoUrl}" alt="${voterName}" style="width:20px;height:20px;object-fit:cover;border-radius:50%;">`;
+        } else {
+          avatarContent = `<div style="width:20px;height:20px;background-color:#e0e0e0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#333;">${(voterName || 'U').charAt(0).toUpperCase()}</div>`;
+        }
       } else {
-        optionsMarkup += `
-          <div class="poll-vote-action-btn" data-option-id="${
-            opt.id
-          }" data-post-id="${
-          post.id
-        }" style="border:1px solid #475569; border-radius:6px; background:#252f3f; overflow:hidden; text-align:center; padding-bottom:8px; cursor:pointer; transition:transform 0.15s, border-color 0.15s;">
-            <img src="${
-              opt.image || "https://via.placeholder.com/150x100?text=No+Image"
-            }" style="width:100%; height:100px; object-fit:cover; pointer-events:none;" />
-            <div style="font-weight:bold; font-size:13px; margin-top:6px; color:#38bdf8; pointer-events:none;">${
-              opt.text
-            }</div>
-          </div>`;
+        avatarContent = `<div style="width:20px;height:20px;background-color:#e0e0e0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#333;">?</div>`;
       }
+
+      optionsMarkup += `
+            <li class="OynKM">
+              <div style="width: 20px; height: 20px;" class="OynKM">
+                ${avatarContent}
+              </div>
+            </li>`;
     });
-    optionsMarkup += `</div>`;
-  } else {
-    optionsMarkup = `<div style="display:flex; flex-direction:column; gap:6px; margin-top:10px;">`;
-    p.options.forEach((opt) => {
-      const optVotes = opt.voters ? opt.voters.length : 0;
-      const percent =
-        totalVotes > 0 ? Math.round((optVotes / totalVotes) * 100) : 0;
-      if (hasVoted || !auth.currentUser) {
-        optionsMarkup += `
-          <div style="padding:10px; border:1px solid #475569; border-radius:6px; background:#252f3f; font-size:13px; position:relative; overflow:hidden;">
-            <div style="position:absolute; top:0; left:0; bottom:0; width:${percent}%; background:#0078d4; opacity:0.3; transition:width 0.3s;"></div>
-            <div style="display:flex; justify-content:space-between; position:relative; font-weight:500; color:#fff;">
-              <span>${opt.text}</span>
-              <span style="color:#38bdf8; font-weight:bold;">${percent}% (${optVotes})</span>
+
+    optionsMarkup += `
+          </ul>
+          <span data-hook="polls-voted-user-item">${optVotes} votes</span>
+        </div>
+      </li>`;
+  });
+  optionsMarkup += `</ul>`;
+
+  return `<div style="background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius:16px; padding:24px; border:1px solid #334155; margin-top:16px; position:relative; overflow:hidden;">
+            <div style="position:absolute; top:0; left:0; right:0; bottom:0; background:url('https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwzNjUyOXwwfDF8c2VhcmNofDF8fGJsdWV8ZW58MHx8fHwxfDE2NzE2NjcyOTA') center center/cover; opacity:0.15; pointer-events:none;"></div>
+            <div style="position:relative; z-index:1;">
+              <h3 style="margin:0 0 20px 0; color:#f8fafc; font-size:18px; font-weight:600;">${p.question}</h3>
+              ${optionsMarkup}
             </div>
-          </div>`;
-      } else {
-        optionsMarkup += `
-          <button class="poll-vote-action-btn" data-option-id="${
-            opt.id
-          }" data-post-id="${
-          post.id
-        }" style="width:100%; text-align:left; padding:10px; border:1px solid #475569; border-radius:6px; background:#1e293b; color:#fff; font-size:13px; cursor:pointer; transition:background 0.2s;">
-            ${
-              p.type === "image"
-                ? `<img src="${
-                    opt.image || "https://via.placeholder.com/40"
-                  }" style="width:30px; height:30px; object-fit:cover; vertical-align:middle; margin-right:8px; border-radius:4px;" />`
-                : ""
-            }
-            ${opt.text}
-          </button>`;
-      }
-    });
-    optionsMarkup += `</div>`;
-  }
-
-  return `<div class="poll-widget-frame" style="margin-top:12px; background:#131922; padding:12px; border-radius:6px; border:1px solid #2d3748;">
-            <div style="font-weight:600; font-size:14px; color:#f8fafc; margin-bottom:4px;">📊 ${p.question}</div>
-            ${optionsMarkup}
           </div>`;
 }
 
@@ -1711,13 +1738,26 @@ function bindPollVoteListeners(container, postId) {
 
       if (post && post.pollData) {
         const updatedOptions = post.pollData.options.map((opt) => {
+          let votersList = opt.voters || [];
+          const userHasVoted = votersList.includes(auth.currentUser.uid);
+
           if (opt.id === optionId) {
-            const votersList = opt.voters || [];
-            if (!votersList.includes(auth.currentUser.uid))
-              votersList.push(auth.currentUser.uid);
-            opt.voters = votersList;
+            // User clicked this option - add vote if not already voted, or remove if already voted (toggle)
+            if (!userHasVoted) {
+              votersList = [...votersList, auth.currentUser.uid];
+            } else {
+              // User is changing their vote or removing it - remove from this option
+              votersList = votersList.filter(id => id !== auth.currentUser.uid);
+            }
+          } else if (userHasVoted) {
+            // User previously voted for a different option - remove their vote from that option
+            votersList = votersList.filter(id => id !== auth.currentUser.uid);
           }
-          return opt;
+
+          return {
+            ...opt,
+            voters: votersList
+          };
         });
 
         updateDoc(postRef, { "pollData.options": updatedOptions });
