@@ -2135,16 +2135,22 @@ function bindRealTimeCommentsStream(postId) {
                         (p) => p.id === postId
                       );
                       const currentCommentsCount = post
-                        ? post.commentsCount || 0
-                        : 1;
-                      updateDoc(doc(db, "posts", postId), {
-                        commentsCount: Math.max(0, currentCommentsCount - 1),
-                      });
-                    }
-                  );
-                });
-              }
-            };
+            });
+          }
+        }
+
+        // Add the comment div to the container
+        container.appendChild(commentDiv);
+
+      });
+
+      // Render all top-level comments
+      topLevelComments.forEachLevelComments.forEach(comment => {
+        renderCommentTree(comment, 0);
+      });
+    });
+  );
+}
           }
         }
 
