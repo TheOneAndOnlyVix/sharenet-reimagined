@@ -2029,7 +2029,7 @@ function bindRealTimeCommentsStream(postId) {
 
         // Reply button - only show if user can comment and we're not at max depth
         const replyBtn = auth.currentUser && myPermissions.permissions.canComment && depth < maxDepth
-          ? `<button class="reply-comment-btn" data-post-id="${postId}" data-comment-id="${comment.id}" style="background:none; border:none; color:#666; cursor:pointer; font-size:14px; margin-top:4px; padding:0; width:24px; height:24px; display:flex; align-items:center; justify-content:center;"><span class="material-symbols-outlined">reply</span></button>`
+          ? `<span class="reply-comment-btn material-symbols-outlined" data-post-id="${postId}" data-comment-id="${comment.id}" style="font-size:14px; color:#cf6679; cursor:pointer;">reply</span>`
           : ""
         // Get replies for this comment
         const replies = commentsArray.filter(
