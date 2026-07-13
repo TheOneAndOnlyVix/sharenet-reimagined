@@ -39,8 +39,6 @@ import { renderEmojiGrid } from "./emoji-library.js";
 
 // Your Firebase Configuration
 const firebaseConfig = {
-// Your Firebase Configuration
-const firebaseConfig = {
   apiKey: "AIzaSyDFKAnb3hipbmCFOujKIpdh3jbp18RFGlE",
   authDomain: "sharenet-reimagined.firebaseapp.com",
   projectId: "sharenet-reimagined",
@@ -2045,7 +2043,7 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
             : "";
 
         // Set inner HTML for the comment (no replies container inside)
-        commentDiv.innerHTML = `$
+        commentDiv.innerHTML = `
             <div style="display:flex; align-items:center; align-self:center;">
               <div class="${avatarClass}">${avatarInner}</div>
               <div class="comment-content" style="position:relative; padding-right:24px; border-left:1px solid var(--border-color); padding-left:12px;">
@@ -2089,7 +2087,7 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
 
         // Return the commentDiv for potential upward traversal
         return commentDiv;
-}
+      }
     }
   );
   }
