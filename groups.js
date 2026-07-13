@@ -1497,7 +1497,7 @@ function filterAndRenderPosts(filterQuery) {
             </div>
             <div class="header-actions-wrap">${actionsTemplate}</div>
           </div>
-          
+
           <div class="post-body-content">
             ${
               post.title
@@ -2005,277 +2005,88 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
         const commentDiv = document.createElement('div');
         commentDiv.className = 'comment-item';
         if (effectiveDepth > 0) {
-          commentDiv.classList.add('reply');
+            commentDiv.classList.add('reply');
         }
 
         // Get author info
         const displayAuthor =
-          comment.authorDisplayName ||
-          (comment.authorEmail ? comment.authorEmail.split("@")[0] : "Anonymous");
+            comment.authorDisplayName ||
+            (comment.authorEmail ? comment.authorEmail.split("@")[0] : "Anonymous");
         const commentPhotoUrl = comment.authorPhotoUrl || "";
         const userLetter = displayAuthor.charAt(0).toUpperCase();
-        const commentAvatar = commentPhotoUrl
+        const avatarClass = commentPhotoUrl ? 'comment-avatar' : 'comment-avatar placeholder';
+        const avatarInner = commentPhotoUrl
           ? `<img src="${commentPhotoUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
           : userLetter;
-
-        // Check if current user can delete this comment
+        // Determine if current user can delete this comment
         const isCommentOwner =
-          auth.currentUser && auth.currentUser.uid === comment.authorUid;
+            auth.currentUser && auth.currentUser.uid === comment.authorUid;
         const isAdmin =
-          auth.currentUser &&
-          (myPermissions.isOwner || myPermissions.permissions.deleteContent);
+            auth.currentUser &&
+            (myPermissions.isOwner || myPermissions.permissions.deleteContent);
         const commentDelBtn =
-          isCommentOwner || isAdmin
+            isCommentOwner || isAdmin
             ? `<span class="material-symbols-outlined" id="del-comm-${postId}-${comment.id}" style="font-size:14px; color:#cf6679; cursor:pointer; margin-left:auto;">delete</span>`
             : "";
 
-        // Reply button - only show if user can comment and we're not at max depth
+        // Determine if current user can reply (same as delete for simplicity)
         const replyBtn =
-          auth.currentUser && myPermissions.permissions.canComment && depth < maxDepth
-            ? `<span class="reply-comment-btn material-symbols-outlined" data-post-id="${postId}" data-comment-id="${comment.id}" style="font-size:14px; color:#cf6679; cursor:pointer;">reply</span>`
+            (auth.currentUser && auth.currentUser.uid !== comment.authorUid) || myPermissions.isOwner || myPermissions.permissions.postComment
+            ? `<button class="reply-comment-btn" data-post-id="${postId}" data-reply-to="${comment.id}" style="font-size:14px; padding:6px 10px; border-radius:4px; cursor:pointer;">Reply</button>`
             : "";
 
         // Get replies for this comment
-        const replies = commentsArray.filter(
-          child => child.replyTo === comment.id
-        );
+        const replies = comments.filter(child => child.replyTo === comment.id);
         const repliesCount = replies.length;
         const showRepliesHTML = repliesCount > 0
-          ? `<button class="show-replies-link" data-post-id="${postId}" data-parent-id="${comment.id}" style="background:none; border:none; color:#666; cursor:pointer; font-size:12px; padding:2px 4px; border-radius:4px;">Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}</button>`
-          : "";
+            ? `<button class="show-replies-link" data-post-id="${postId}" data-parent-id="${comment.id}" style="background:none; border:none; color:#666; cursor:pointer; font-size:12px; padding:2px 4px; border-radius:4px;">Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ""}</button>`
+            : "";
 
         // Set inner HTML for the comment (no replies container inside)
-        commentDiv.innerHTML = `
-          <div style="display:flex; align-items:flex-start;">
-            <div class="comment-avatar">${commentAvatar}</div>
-            <div style="display:flex;flex-direction:column;flex:1;">
-              <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                <div style="display:flex; align-items:center;">
+        commentDiv.innerHTML = `$
+            <div style="display:flex; align-items:center; align-self:center;">
+              <div class="${avatarClass}">${avatarInner}</div>
+              <div class="comment-content" style="position:relative; padding-right:24px; border-left:1px solid var(--border-color); padding-left:12px;">
+                <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                  <span class="user-badge-row-slot" data-badge-author-uid="${comment.authorUid || ""}" data-badge-id-prefix="comment-${comment.id}">${renderAuthorBadgeRow(
+                    comment.authorUid,
+                    `comment-${comment.id}`
+                  )}</span>
                   <a href="profile.html?uid=${comment.authorUid || ""}" class="comment-author-name comment-author-name-link">${displayAuthor}</a>
-                  <span class="user-badge-row-slot" data-badge-author-uid="${
-                    comment.authorUid || ""
-                  }" data-badge-id-prefix="comment-${comment.id}">${renderAuthorBadgeRow(
-          comment.authorUid,
-          `comment-${comment.id}`
-        )}</span>
                 </div>
-                <div style="display:flex; gap:8px; align-items:center;">
+                <span class="comment-body-text">${comment.text}</span>
+                ${showRepliesHTML}
+                <div id="reply-form-${postId}-${comment.id}" style="margin-top:8px; display:none;">
+                  <input type="text" class="comment-message-input-field" id="comment-field-${postId}-reply-${comment.id}" placeholder="Write a reply..." />
+                  <button class="submit-comment-action-btn" data-post-id="${postId}" data-reply-to="${comment.id}">Send Reply</button>
+                </div>
+                <div class="comment-actions" style="position:absolute; right:0; top:50%; transform:translateY(-50%); display:flex; flex-direction:column; gap:4px;">
                   ${replyBtn}
                   ${commentDelBtn}
                 </div>
               </div>
-              <span class="comment-body-text">${comment.text}</span>
-              ${showRepliesHTML}
-              <div id="reply-form-${postId}-${comment.id}" style="margin-top:8px; display:none;">
-                <input type="text" class="comment-message-input-field" id="comment-field-${postId}-reply-${comment.id}" placeholder="Write a reply..." />
-                <button class="submit-comment-action-btn" data-post-id="${postId}" data-reply-to="${comment.id}">Send Reply</button>
-              </div>
-            </div>
-          </div>
-        `;
+            </div>`;
 
-        // Append commentDiv to wrapper
+        // Append the comment div to the wrapper
         wrapper.appendChild(commentDiv);
 
-        // Replies container: will hold child comment wrappers
-        const repliesContainer = document.createElement('div');
-        repliesContainer.className = 'replies-list';
-        repliesContainer.id = `replies-container-${postId}-${comment.id}`;
-        wrapper.appendChild(repliesContainer);
+        // If there are replies, create a container for them
+        if (replies.length > 0 && effectiveDepth < maxDepth) {
+            const repliesContainer = document.createElement('div');
+            repliesContainer.className = 'comment-replies';
+            repliesContainer.style.marginLeft = '36px'; /* offset for avatar */
+            replies.forEach(reply => {
+            const replyElement = renderCommentTree(reply, depth + 1, repliesContainer);
+            repliesContainer.appendChild(replyElement);
+            });
+            wrapper.appendChild(repliesContainer);
+        }
 
-        // Append wrapper to the passed container (which could be the main list or a parent's replies-list)
+        // Append wrapper to the container (listContainer or repliesContainer)
         container.appendChild(wrapper);
 
-        // Add event listeners for this comment
-        const replyBtnElement = commentDiv.querySelector('.reply-comment-btn');
-        if (replyBtnElement) {
-          replyBtnElement.onclick = (e) => {
-            e.stopPropagation();
-            const replyForm = document.getElementById(`reply-form-${postId}-${comment.id}`);
-            if (replyForm) {
-              replyForm.style.display = replyForm.style.display === 'none' ? 'block' : 'none';
-              if (replyForm.style.display === 'block') {
-                const replyField = commentDiv.querySelector(`#comment-field-${postId}-reply-${comment.id}`);
-                if (replyField) replyField.focus();
-              }
-            }
-          };
-        }
-
-        const showRepliesLinkElement = commentDiv.querySelector(`.show-replies-link[data-post-id="${postId}"][data-parent-id="${comment.id}"]`);
-        if (showRepliesLinkElement) {
-          showRepliesLinkElement.onclick = (e) => {
-            e.stopPropagation();
-            const repliesContainer = document.getElementById(`replies-container-${postId}-${comment.id}`);
-            if (repliesContainer) {
-              if (repliesContainer.innerHTML === '') {
-                // Load and show replies
-                replies.forEach(reply => {
-                  renderCommentTree(reply, depth + 1, repliesContainer);
-                });
-                showRepliesLinkElement.textContent = `Hide ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
-              } else {
-                // Hide replies
-                repliesContainer.innerHTML = '';
-                showRepliesLinkElement.textContent = `Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
-              }
-            }
-          };
-        }
-
-        const sendReplyBtn = commentDiv.querySelector(`.submit-comment-action-btn[data-reply-to="${comment.id}"]`);
-        if (sendReplyBtn) {
-          sendReplyBtn.onclick = (e) => {
-            e.stopPropagation();
-            dispatchNewComment(postId, comment.id);
-          };
-        }
-
-        // Handle delete button
-        if (isCommentOwner || isAdmin) {
-          const dcBtn = commentDiv.querySelector(`#del-comm-${postId}-${comment.id}`);
-          if (dcBtn) {
-            dcBtn.onclick = () => {
-              if (confirm("Remove your comment?")) {
-                addDoc(collection(db, "notifications"), {
-                  title: "Comment Deleted",
-                  message: "A comment was deleted.",
-                  type: "comment_deletion",
-                  createdBy: auth.currentUser.uid,
-                  createdAt: new Date(),
-                  viewedBy: [],
-                })
-                  .then(() =>
-                    deleteDoc(doc(db, "posts", postId, "comments", comment.id))
-                  )
-                  .then(() => {
-                    const post = masterPostsCache.find((p) => p.id === postId);
-                    const updatedCount = post
-                      ? Math.max((post.commentsCount || 1) - 1, 0)
-                      : 0;
-                    if (post) {
-                      updateDoc(doc(db, "posts", postId), {
-                        commentsCount: updatedCount,
-                      }).catch(console.error);
-                    }
-                  })
-                  .catch(console.error);
-              }
-            };
-          }
-        }
-      }
-
-      // Render all top-level comments
-      topLevelComments.forEach(comment => {
-        renderCommentTree(comment, 0);
-      });
-    });
-  }
-
-// Writes fresh feedback responses safely into nested targets
-async function dispatchNewComment(postId, replyTo = null) {
-  if (!auth.currentUser) {
-    alert("Please sign in to add content.");
-    return;
-  }
-  if (!myPermissions.permissions.canComment) {
-    alert("Your account role does not allow you to comment.");
-    return;
-  }
-
-  const field = document.getElementById(
-    `comment-field-${postId}${replyTo ? `-reply-${replyTo}` : ""}`
-  );
-  const txt = field ? field.value.trim() : "";
-  if (!txt) return;
-
-  // ── Content moderation ──────────────────────────────────────────────────
-  const filterResult = await checkContent(txt);
-  if (!filterResult.allowed) {
-    alert(`Comment blocked: ${filterResult.reason}`);
-    return;
-  }
-  // ────────────────────────────────────────────────────────────────────────
-
-  const commentAuthorName =
-    currentUserProfile.displayName || auth.currentUser.email.split("@")[0];
-
-  const commentData = {
-    text: txt,
-    authorUid: auth.currentUser.uid,
-    authorEmail: auth.currentUser.email,
-    authorDisplayName: commentAuthorName,
-    authorPhotoUrl: currentUserProfile.photoUrl || "",
-    createdAt: new Date(),
-    ...(replyTo !== null && { replyTo })
-  };
-
-  addDoc(collection(db, "posts", postId, "comments"), commentData).then(() => {
-    const currentPost = masterPostsCache.find((p) => p.id === postId);
-    addDoc(collection(db, "notifications"), {
-      title: "New Comment",
-      message: `${commentAuthorName} commented on a post in "${currentPost?.groupName || "Main Feed"}".`,
-      preview: txt.substring(0, 120),
-      type: "comment_creation",
-      postId: postId,
-      groupId: currentPost?.groupId || null,
-      groupName: currentPost?.groupName || null,
-      groupMembers: currentPost?.groupId
-        ? (currentGroupsDataMap[currentPost.groupId]?.members || [])
-        : null,
-      createdBy: auth.currentUser.uid,
-      createdAt: new Date(),
-      viewedBy: [],
-    });
-
-    const updatedCount = currentPost ? (currentPost.commentsCount || 0) + 1 : 1;
-
-    updateDoc(doc(db, "posts", postId), { commentsCount: updatedCount }).then(
-      () => {
-        if (field) field.value = "";
-        // Close reply form if this was a reply
-        if (replyTo) {
-          const replyForm = document.getElementById(`reply-form-${postId}-${replyTo}`);
-          if (replyForm) {
-            replyForm.style.display = 'none';
-            // const replyField = document.getElementById(`comment-field-${postId}-reply-${replyTo}`);
-            // if (replyField) replyField.value = '';
-          }
-        }
-      }
-    );
-  });
-}
-
-// --- Wix Composer Window View Event Listeners Configuration ---
-if (openComposerBtn) {
-  openComposerBtn.addEventListener("click", () => {
-    if (!auth.currentUser) {
-      alert("Please login to make a post.");
-      return;
-    }
-    composerModal.style.display = "flex";
-    compUser.innerText =
-      currentUserProfile.displayName || auth.currentUser.email.split("@")[0];
-    if (currentUserProfile.photoUrl) {
-      compAvatar.innerHTML = `<img src="${currentUserProfile.photoUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`;
-    } else {
-      compAvatar.innerText = (
-        currentUserProfile.displayName || auth.currentUser.email.split("@")[0]
-      )
-        .charAt(0)
-        .toUpperCase();
-    }
-    if (currentActiveGroupId === "global") {
-      compTargetGroup.innerText = "Main Feed";
-    } else {
-      const currentGroup = currentGroupsDataMap[currentActiveGroupId];
-      compTargetGroup.innerText = currentGroup
-        ? currentGroup.name
-        : "Main Feed";
-    }
-  });
+        // Return the commentDiv for potential upward traversal
+        return commentDiv;
 }
 
 function shutdownComposerWindow() {
