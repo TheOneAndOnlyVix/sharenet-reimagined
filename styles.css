@@ -1139,12 +1139,6 @@ html.theme-light .reply-indicator {
   background: #f1f5f9;
   color: #64748b;
 }
-.comment-item.reply {
-  margin-left: 20px;
-}
-html.theme-light .comment-item.reply {
-  /* no special styling needed */
-}
 
 /* Responsive */
 @media (max-width: 480px) {
@@ -1213,9 +1207,8 @@ html.theme-light {
 
 /* Reply comment styling */
 .comment-item.reply {
-  border-left: 2px solid var(--accent-blue);
-  margin-left: 8px;
-  padding-left: 8px;
+  margin-left: 20px;
+  border-left: 2px solid var(--border-color);
 }
 
 /* Action buttons (edit, delete, react) */
