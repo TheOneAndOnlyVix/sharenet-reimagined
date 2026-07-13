@@ -3420,65 +3420,6 @@ html.theme-light .toggle-comments-trigger-btn:hover {
   color: var(--accent-purple);
 }
 
-/* Comments drawer */
-html.theme-light .post-comments-drawer-panel {
-  border-top-color: var(--border-color);
-  background: var(--bg-card);
-}
-
-html.theme-light .comment-item {
-  background: #e0f4ff;
-  border: 1px solid #b3e0f7;
-}
-
-html.theme-light .comment-avatar {
-  background: #0288d1;
-}
-
-html.theme-light .comment-author-name {
-  color: #0277bd;
-}
-
-html.theme-light .comment-body-text {
-  color: #01579b;
-}
-
-html.theme-light .comment-message-input-field {
-  background: #fff0f5 !important;
-  border-color: var(--border-color) !important;
-  color: var(--text-main) !important;
-}
-
-html.theme-light .submit-comment-action-btn {
-  background: var(--accent-purple);
-  color: #fff;
-}
-
-/* Feed header + sidebar widgets */
-html.theme-light .feed-header-card {
-  background: var(--bg-card);
-  border-color: var(--border-color);
-}
-
-html.theme-light .widget,
-html.theme-light .groups-list-card {
-  background: var(--bg-card);
-  border-color: var(--border-color);
-}
-
-html.theme-light .groups-scroll-list {
-  background: var(--bg-card);
-}
-
-/* Admin panel */
-html.theme-light .admin-panel,
-html.theme-light .dropdown-content,
-html.theme-light .request-item {
-  background: var(--bg-card);
-  border-color: var(--border-color);
-  color: var(--text-main);
-}
-
 /* Emoji picker */
 html.theme-light .emoji-picker-container {
   background: var(--bg-card);

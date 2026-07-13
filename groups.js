@@ -2095,7 +2095,7 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
             if (replyForm) {
               replyForm.style.display = replyForm.style.display === 'none' ? 'block' : 'none';
               if (replyForm.style.display === 'block') {
-                const replyField = commentDiv.querySelector(`\#comment-field-${postId}-reply-${comment.id}`);
+                const replyField = commentDiv.querySelector(`#comment-field-${postId}-reply-${comment.id}`);
                 if (replyField) replyField.focus();
               }
             }
