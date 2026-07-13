@@ -39,6 +39,8 @@ import { renderEmojiGrid } from "./emoji-library.js";
 
 // Your Firebase Configuration
 const firebaseConfig = {
+// Your Firebase Configuration
+const firebaseConfig = {
   apiKey: "AIzaSyDFKAnb3hipbmCFOujKIpdh3jbp18RFGlE",
   authDomain: "sharenet-reimagined.firebaseapp.com",
   projectId: "sharenet-reimagined",
@@ -2088,6 +2090,9 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
         // Return the commentDiv for potential upward traversal
         return commentDiv;
 }
+    }
+  );
+  }
 
 function shutdownComposerWindow() {
   composerModal.style.display = "none";
