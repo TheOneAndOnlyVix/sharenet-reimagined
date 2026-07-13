@@ -2056,7 +2056,7 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
                     comment.authorUid || ""
                   }" data-badge-id-prefix="comment-${comment.id}">${renderAuthorBadgeRow(
           comment.authorUid,
-          \`comment-${comment.id}\`
+          `comment-${comment.id}`
         )}</span>
                 </div>
                 <div style="display:flex; gap:8px; align-items:center;">
@@ -2080,7 +2080,7 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
         // Replies container: will hold child comment wrappers
         const repliesContainer = document.createElement('div');
         repliesContainer.className = 'replies-list';
-        repliesContainer.id = \`replies-container-${postId}-${comment.id}\`;
+        repliesContainer.id = `replies-container-${postId}-${comment.id}`;
         wrapper.appendChild(repliesContainer);
 
         // Append wrapper to the passed container (which could be the main list or a parent's replies-list)
@@ -2091,7 +2091,7 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
         if (replyBtnElement) {
           replyBtnElement.onclick = (e) => {
             e.stopPropagation();
-            const replyForm = document.getElementById(\`reply-form-${postId}-${comment.id}\`);
+            const replyForm = document.getElementById(`reply-form-${postId}-${comment.id}`);
             if (replyForm) {
               replyForm.style.display = replyForm.style.display === 'none' ? 'block' : 'none';
               if (replyForm.style.display === 'block') {
@@ -2106,18 +2106,18 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
         if (showRepliesLinkElement) {
           showRepliesLinkElement.onclick = (e) => {
             e.stopPropagation();
-            const repliesContainer = document.getElementById(\`replies-container-${postId}-${comment.id}\`);
+            const repliesContainer = document.getElementById(`replies-container-${postId}-${comment.id}`);
             if (repliesContainer) {
               if (repliesContainer.innerHTML === '') {
                 // Load and show replies
                 replies.forEach(reply => {
                   renderCommentTree(reply, depth + 1, repliesContainer);
                 });
-                showRepliesLinkElement.textContent = \`Hide ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}\`;
+                showRepliesLinkElement.textContent = `Hide ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
               } else {
                 // Hide replies
                 repliesContainer.innerHTML = '';
-                showRepliesLinkElement.textContent = \`Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}\`;
+                showRepliesLinkElement.textContent = `Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
               }
             }
           };
@@ -2133,7 +2133,7 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
 
         // Handle delete button
         if (isCommentOwner || isAdmin) {
-          const dcBtn = commentDiv.querySelector(\`#del-comm-${postId}-${comment.id}\`);
+          const dcBtn = commentDiv.querySelector(`#del-comm-${postId}-${comment.id}`);
           if (dcBtn) {
             dcBtn.onclick = () => {
               if (confirm("Remove your comment?")) {
