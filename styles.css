@@ -1487,16 +1487,9 @@ html.theme-light .comment-avatar {
   opacity: 0.85;
 }
 
-
 /* ==========================================================================
-        9. GROUPS PAGE — ADMIN PANEL (PENDING REQUESTS)
-        ========================================================================== */
-  font-weight: 600;
-  font-size: 14px;
-  cursor: pointer;
-  text-align: left;
-  transition: background-color 0.2s;
-}
+         10. GROUPS PAGE — GROUP SIDEBAR
+         ========================================================================== */
 
 .dropbtn:hover {
   background-color: rgba(248, 81, 73, 0.16);
