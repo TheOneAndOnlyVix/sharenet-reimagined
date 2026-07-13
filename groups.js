@@ -1992,18 +1992,20 @@ function bindRealTimeCommentsStream(postId) {
       topLevelComments.sort((a, b) => a.createdAt.seconds - b.createdAt.seconds);
 
       // Function to recursively render a comment and its replies
-      function renderCommentTree(comment, depth = 0, container = listContainer) {
+function renderCommentTree(comment, depth = 0, container = listContainer) {
         // Limit depth to prevent excessive nesting (max 3 levels deep as requested)
         const maxDepth = 3;
         const effectiveDepth = Math.min(depth, maxDepth);
 
-        // Create comment container
-        const commentDiv = document.createElement("div");
-        commentDiv.className = "comment-item";
-        commentDiv.style.marginLeft = `${effectiveDepth * 20}px`;
+        // Wrapper for this comment and its replies list
+        const wrapper = document.createElement('div');
+        wrapper.className = 'comment-wrapper';
+
+        // Comment element
+        const commentDiv = document.createElement('div');
+        commentDiv.className = 'comment-item';
         if (effectiveDepth > 0) {
-          commentDiv.style.borderLeft = `1px solid #e0e0e0`;
-          commentDiv.style.paddingLeft = `10px`;
+          commentDiv.classList.add('reply');
         }
 
         // Get author info
@@ -2028,9 +2030,11 @@ function bindRealTimeCommentsStream(postId) {
             : "";
 
         // Reply button - only show if user can comment and we're not at max depth
-        const replyBtn = auth.currentUser && myPermissions.permissions.canComment && depth < maxDepth
-          ? `<span class="reply-comment-btn material-symbols-outlined" data-post-id="${postId}" data-comment-id="${comment.id}" style="font-size:14px; color:#cf6679; cursor:pointer;">reply</span>`
-          : ""
+        const replyBtn =
+          auth.currentUser && myPermissions.permissions.canComment && depth < maxDepth
+            ? `<span class="reply-comment-btn material-symbols-outlined" data-post-id="${postId}" data-comment-id="${comment.id}" style="font-size:14px; color:#cf6679; cursor:pointer;">reply</span>`
+            : "";
+
         // Get replies for this comment
         const replies = commentsArray.filter(
           child => child.replyTo === comment.id
@@ -2039,7 +2043,8 @@ function bindRealTimeCommentsStream(postId) {
         const showRepliesHTML = repliesCount > 0
           ? `<button class="show-replies-link" data-post-id="${postId}" data-parent-id="${comment.id}" style="background:none; border:none; color:#666; cursor:pointer; font-size:12px; padding:2px 4px; border-radius:4px;">Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}</button>`
           : "";
-        // Set inner HTML
+
+        // Set inner HTML for the comment (no replies container inside)
         commentDiv.innerHTML = `
           <div style="display:flex; align-items:flex-start;">
             <div class="comment-avatar">${commentAvatar}</div>
@@ -2051,7 +2056,7 @@ function bindRealTimeCommentsStream(postId) {
                     comment.authorUid || ""
                   }" data-badge-id-prefix="comment-${comment.id}">${renderAuthorBadgeRow(
           comment.authorUid,
-          `comment-${comment.id}`
+          \`comment-${comment.id}\`
         )}</span>
                 </div>
                 <div style="display:flex; gap:8px; align-items:center;">
@@ -2065,21 +2070,32 @@ function bindRealTimeCommentsStream(postId) {
                 <input type="text" class="comment-message-input-field" id="comment-field-${postId}-reply-${comment.id}" placeholder="Write a reply..." />
                 <button class="submit-comment-action-btn" data-post-id="${postId}" data-reply-to="${comment.id}">Send Reply</button>
               </div>
-              <div id="replies-container-${postId}-${comment.id}" style="margin-top:8px;"></div>
             </div>
           </div>
         `;
 
+        // Append commentDiv to wrapper
+        wrapper.appendChild(commentDiv);
+
+        // Replies container: will hold child comment wrappers
+        const repliesContainer = document.createElement('div');
+        repliesContainer.className = 'replies-list';
+        repliesContainer.id = \`replies-container-${postId}-${comment.id}\`;
+        wrapper.appendChild(repliesContainer);
+
+        // Append wrapper to the passed container (which could be the main list or a parent's replies-list)
+        container.appendChild(wrapper);
+
         // Add event listeners for this comment
-        const replyBtnElement = commentDiv.querySelector(".reply-comment-btn");
+        const replyBtnElement = commentDiv.querySelector('.reply-comment-btn');
         if (replyBtnElement) {
           replyBtnElement.onclick = (e) => {
             e.stopPropagation();
-            const replyForm = document.getElementById(`reply-form-${postId}-${comment.id}`);
+            const replyForm = document.getElementById(\`reply-form-${postId}-${comment.id}\`);
             if (replyForm) {
               replyForm.style.display = replyForm.style.display === 'none' ? 'block' : 'none';
               if (replyForm.style.display === 'block') {
-                const replyField = commentDiv.querySelector(`#comment-field-${postId}-reply-${comment.id}`);
+                const replyField = commentDiv.querySelector(`\#comment-field-${postId}-reply-${comment.id}`);
                 if (replyField) replyField.focus();
               }
             }
@@ -2090,18 +2106,18 @@ function bindRealTimeCommentsStream(postId) {
         if (showRepliesLinkElement) {
           showRepliesLinkElement.onclick = (e) => {
             e.stopPropagation();
-            const repliesContainer = document.getElementById(`replies-container-${postId}-${comment.id}`);
+            const repliesContainer = document.getElementById(\`replies-container-${postId}-${comment.id}\`);
             if (repliesContainer) {
               if (repliesContainer.innerHTML === '') {
                 // Load and show replies
                 replies.forEach(reply => {
                   renderCommentTree(reply, depth + 1, repliesContainer);
                 });
-                showRepliesLinkElement.textContent = `Hide ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
+                showRepliesLinkElement.textContent = \`Hide ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}\`;
               } else {
                 // Hide replies
                 repliesContainer.innerHTML = '';
-                showRepliesLinkElement.textContent = `Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}`;
+                showRepliesLinkElement.textContent = \`Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ''}\`;
               }
             }
           };
@@ -2117,7 +2133,7 @@ function bindRealTimeCommentsStream(postId) {
 
         // Handle delete button
         if (isCommentOwner || isAdmin) {
-          const dcBtn = commentDiv.querySelector(`#del-comm-${postId}-${comment.id}`);
+          const dcBtn = commentDiv.querySelector(\`#del-comm-${postId}-${comment.id}\`);
           if (dcBtn) {
             dcBtn.onclick = () => {
               if (confirm("Remove your comment?")) {
@@ -2148,9 +2164,6 @@ function bindRealTimeCommentsStream(postId) {
             };
           }
         }
-
-        // Add the comment div to the container
-        container.appendChild(commentDiv);
       }
 
       // Render all top-level comments
