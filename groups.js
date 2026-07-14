@@ -2036,7 +2036,7 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
             : "";
 
         // Get replies for this comment
-        const replies = comments.filter(child => child.replyTo === comment.id);
+        const replies = commentsArray.filter(child => child.replyTo === comment.id);
         const repliesCount = replies.length;
         const showRepliesHTML = repliesCount > 0
             ? `<button class="show-replies-link" data-post-id="${postId}" data-parent-id="${comment.id}" style="background:none; border:none; color:#666; cursor:pointer; font-size:12px; padding:2px 4px; border-radius:4px;">Show ${repliesCount} reply${repliesCount !== 1 ? 's' : ""}</button>`
