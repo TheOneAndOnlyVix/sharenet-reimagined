@@ -1560,6 +1560,9 @@ function filterAndRenderPosts(filterQuery) {
       tempWrap.innerHTML = cardHTML;
       const cardNode = tempWrap.firstElementChild;
       postsStream.appendChild(cardNode);
+      const drawer = cardNode.querySelector(`#comments-drawer-${post.id}`);
+      if (drawer) { drawer.style.display = "block"; }
+      openCommentSectionsMap[post.id] = true;
 
       bindCardEventListeners(cardNode, post.id);
       bindBadgeOverflowTriggers(cardNode);
