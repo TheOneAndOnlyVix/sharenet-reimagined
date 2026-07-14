@@ -23,7 +23,9 @@ import {
   arrayUnion,
   arrayRemove,
   deleteDoc,
+  serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
 import {
   getStorage,
   ref,
@@ -2101,6 +2103,43 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
     }
   );
   }
+
+function dispatchNewComment(postId) {
+  const commentField = document.getElementById(`comment-field-${postId}`);
+  if (!commentField) return;
+  const commentText = commentField.value.trim();
+  if (!commentText) {
+    return;
+  }
+  if (!auth.currentUser) {
+    alert("Please sign in to post a comment.");
+    return;
+  }
+  const displayName =
+    currentUserProfile.displayName ||
+    (auth.currentUser.email ? auth.currentUser.email.split("@")[0] : "Anonymous");
+  const photoUrl = currentUserProfile.photoUrl || "";
+
+  const commentData = {
+    text: commentText,
+    authorUid: auth.currentUser.uid,
+    authorEmail: auth.currentUser.email,
+    authorDisplayName: displayName,
+    authorPhotoUrl: photoUrl,
+    createdAt: serverTimestamp(),
+  };
+
+  try {
+    const docRef = await addDoc(
+      collection(db, "posts", postId, "comments"),
+      commentData
+    );
+    commentField.value = "";
+  } catch (error) {
+    console.error("Error adding comment: ", error);
+    alert("Failed to post comment: " + error.message);
+  }
+}
 
 function shutdownComposerWindow() {
   composerModal.style.display = "none";
