@@ -2104,7 +2104,7 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
   );
   }
 
-function dispatchNewComment(postId) {
+async function dispatchNewComment(postId) {
   const commentField = document.getElementById(`comment-field-${postId}`);
   if (!commentField) return;
   const commentText = commentField.value.trim();
