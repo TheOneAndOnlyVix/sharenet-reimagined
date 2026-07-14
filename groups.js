@@ -32,6 +32,9 @@ import {
   uploadBytes,
   getDownloadURL,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
+// Track if we've shown a Firebase error for a post to avoid spamming
+const firebaseErrorShown = new Map();
 import {
   computePermissions,
   onRolesUpdated,
@@ -2099,6 +2102,13 @@ function renderCommentTree(comment, depth = 0, container = listContainer) {
 
         // Return the commentDiv for potential upward traversal
         return commentDiv;
+      }
+    },
+    (error) => {
+      console.error("Error listening to comments for post", postId, ":", error);
+      // Show error to user if comment container exists
+      if (listContainer) {
+        listContainer.innerHTML = `<div class="error-message">Failed to load comments. Please try again later.</div>`;
       }
     }
   );
