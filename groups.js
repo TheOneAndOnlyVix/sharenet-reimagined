@@ -1403,6 +1403,13 @@ function filterAndRenderPosts(filterQuery) {
       }
 
       postsStream.appendChild(existingCard);
+      // Auto-open comment drawer for existing card
+      const drawer = existingCard.querySelector(`#comments-drawer-${post.id}`);
+      if (drawer) { drawer.style.display = "block"; }
+      openCommentSectionsMap[post.id] = true;
+      if (openCommentSectionsMap[post.id]) {
+        bindRealTimeCommentsStream(post.id);
+      }
     } else {
       const displayName =
         post.authorDisplayName ||
